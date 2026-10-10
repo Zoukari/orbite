@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ReactFlow, ReactFlowProvider, useReactFlow, useNodesState, MiniMap, ConnectionMode, MarkerType,
+  ReactFlow, ReactFlowProvider, useReactFlow, useNodesState, MiniMap, ConnectionMode, MarkerType, Background, BackgroundVariant,
   type Node, type Edge as RFEdge, type OnNodesChange, type Connection, type Viewport
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -28,6 +28,7 @@ function Canvas() {
   const rf = useReactFlow()
   const mobile = useIsMobile()
   const [vp, setVp] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
+  const [mobileSel, setMobileSel] = useState<string | null>(null)
   const [edgeMenu, setEdgeMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; flow: { x: number; y: number } } | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -106,7 +107,7 @@ function Canvas() {
         if (rf.getZoom() >= 0.5) return
         const ents = useData.getState().entities
         const root = Object.values(ents).find((e) => e.mapId === mapId && !e.parentId && e.type !== 'map')
-        if (root) rf.setCenter((root.x ?? 0) + 260, root.y ?? 0, { zoom: 0.8, duration: 600 })
+        if (root) rf.setCenter((root.x ?? 0) + 260, root.y ?? 0, { zoom: mobile ? 0.95 : 0.8, duration: 600 })
       })
     }, 60)
     return () => clearTimeout(t)
@@ -159,6 +160,8 @@ function Canvas() {
       return
     }
     if (ev.shiftKey || ev.metaKey) return
+    // mobile : un tap sélectionne et affiche la barre d'actions (pas de plein écran)
+    if (mobile) { setMobileSel(node.id); return }
     ui.open(node.id)
   }, [mapId, mobile])
 
@@ -272,7 +275,7 @@ function Canvas() {
 
   return (
     <div ref={wrapRef} className={`relative h-full w-full ${connectFrom ? 'connecting' : ''}`} onDoubleClick={onPaneDouble} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/orbite')) e.preventDefault() }} onDrop={onDrop}>
-      {settings.theme === 'dark' && <Starfield offset={vp} calm={calm} />}
+      <Starfield offset={vp} calm={calm} light={settings.theme === 'light'} />
       <ReactFlow
         nodes={nodes}
         edges={graph.edges}
@@ -288,13 +291,14 @@ function Canvas() {
         onEdgeClick={onEdgeClick}
         onConnect={onConnect}
         onMove={(_, v) => setVp(v)}
-        onPaneClick={() => { useUI.getState().set({ menu: null, connectFrom: null }); setEdgeMenu(null) }}
+        onPaneClick={() => { useUI.getState().set({ menu: null, connectFrom: null }); setEdgeMenu(null); setMobileSel(null) }}
         connectionMode={ConnectionMode.Loose}
         minZoom={0.05}
         maxZoom={2.5}
         zoomOnDoubleClick={false}
         selectionOnDrag={!mobile}
         panOnDrag={mobile ? true : [1, 2]}
+        nodeDragThreshold={mobile ? 6 : 1}
         panOnScroll={!mobile}
         zoomOnPinch
         multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
@@ -304,6 +308,8 @@ function Canvas() {
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}
       >
+        {settings.theme === 'light' && <Background id="g1" variant={BackgroundVariant.Lines} gap={36} lineWidth={0.6} color="rgba(79,102,230,0.07)" />}
+        {settings.theme === 'light' && <Background id="g2" variant={BackgroundVariant.Lines} gap={144} lineWidth={0.9} color="rgba(79,102,230,0.11)" />}
         {!mobile && nodes.length > 12 && <MiniMap pannable zoomable maskColor="rgba(0,0,0,0.12)" nodeColor={(n) => { const e = ents[(n.data as any).id]; return e?.color || TYPE_META[e?.type || 'idea'].tint }} nodeBorderRadius={8} style={{ width: 150, height: 100 }} />}
       </ReactFlow>
 
@@ -321,9 +327,12 @@ function Canvas() {
       </div>
 
       {connectFrom && (
-        <div className="glass rise absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full border border-line px-4 py-2 text-xs md:bottom-6">
-          Choisis l’élément à connecter · <button className="text-accent" onClick={() => useUI.getState().set({ connectFrom: null })}>Annuler</button>
+        <div className="glass rise absolute bottom-[92px] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-full border border-accent/50 px-4 py-2.5 text-[13px] shadow-lg md:bottom-6">
+          Touche l’élément à relier · <button className="font-medium text-accent" onClick={() => useUI.getState().set({ connectFrom: null })}>Annuler</button>
         </div>
+      )}
+      {mobile && mobileSel && !connectFrom && ents[mobileSel] && (
+        <MobileBar id={mobileSel} onClose={() => setMobileSel(null)} onChild={(id) => setMobileSel(id)} />
       )}
 
 
@@ -335,6 +344,41 @@ function Canvas() {
   )
 }
 
+
+// Barre d'actions mobile : tout ce qu'on fait au clavier / clic droit sur desktop
+function MobileBar({ id, onClose, onChild }: { id: string; onClose: () => void; onChild: (id: string) => void }) {
+  const e = useData((s) => s.entities[id])
+  const ents = useData((s) => s.entities)
+  if (!e) return null
+  const ui = useUI.getState()
+  const data = useData.getState()
+  const hasKids = descendants(ents, id).length > 0
+  const actions: { icon: string; label: string; act: () => void; danger?: boolean }[] = [
+    { icon: 'open', label: 'Ouvrir', act: () => ui.open(id) },
+    { icon: 'child', label: 'Enfant', act: () => { const pos = placeChild(data.entities, e); const c = data.create({ type: childType(e.type), title: '', parentId: e.id, mapId: e.mapId, ...pos }); if (e.collapsed) data.update(e.id, { collapsed: false }); ui.set({ editingId: c.id }); onChild(c.id) } },
+    { icon: 'connect', label: 'Relier', act: () => { ui.set({ connectFrom: id }); ui.notify('Touche maintenant l’élément à relier') } },
+    { icon: 'edit', label: 'Renommer', act: () => ui.set({ editingId: id }) },
+    { icon: 'move', label: 'Ranger', act: () => ui.set({ addTo: { sourceId: id, mode: 'move' } }) },
+    ...(hasKids ? [{ icon: e.collapsed ? 'expand' : 'collapse', label: e.collapsed ? 'Déplier' : 'Réduire', act: () => data.update(id, { collapsed: !e.collapsed }) }] : []),
+    { icon: 'trash', label: 'Suppr.', danger: true, act: () => { const n = descendants(data.entities, id).length; if (confirm(n ? `Supprimer avec ${n} élément(s) ?` : `Supprimer « ${displayTitle(data.entities, e)} » ?`)) { data.remove(id); onClose() } } }
+  ]
+  return (
+    <div className="rise absolute inset-x-2 bottom-[84px] z-30 rounded-2xl border border-line/70 bg-surface/95 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center gap-2 px-3 pb-1 pt-2">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{displayTitle(ents, e)}</span>
+        <button className="text-mute" onClick={onClose}><Icon name="close" className="h-4 w-4" /></button>
+      </div>
+      <div className="no-scrollbar flex overflow-x-auto px-1 pb-1.5">
+        {actions.map((a) => (
+          <button key={a.label} onClick={a.act} className={`flex min-w-[48px] flex-1 flex-col items-center gap-1 rounded-xl px-0.5 py-2 text-[10px] active:bg-ink/10 ${a.danger ? 'text-[#ff7a7a]' : 'text-ink/80'}`}>
+            <Icon name={a.icon} className="h-5 w-5" />{a.label}
+          </button>
+        ))}
+      </div>
+      <div className="px-3 pb-2 text-center text-[10.5px] text-mute">Glisse l’élément pour le déplacer</div>
+    </div>
+  )
+}
 
 function EdgeMenu({ id, x, y, onClose }: { id: string; x: number; y: number; onClose: () => void }) {
   const edge = useData((s) => s.edges[id])

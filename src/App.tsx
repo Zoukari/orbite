@@ -73,8 +73,6 @@ const NAV: { id: ViewId; label: string; icon: string; drop?: string }[] = [
   { id: 'notes', label: 'Notes', icon: 'notes', drop: 'notes' }
 ]
 const MORE: { id: ViewId; label: string; icon: string }[] = [
-  { id: 'projects', label: 'Projets', icon: 'folder' },
-  { id: 'objectives', label: 'Objectifs', icon: 'target' },
   { id: 'favorites', label: 'Favoris', icon: 'star' },
   { id: 'maps', label: 'Toutes les maps', icon: 'map' },
   { id: 'inbox', label: 'Inbox', icon: 'inbox' }
@@ -176,7 +174,7 @@ function Sidebar({ onCreate }: { onCreate: () => void }) {
       </div>
       <div className="space-y-0.5">
         {NAV.map((n) => item(n))}
-        {inbox > 0 && !more && item(MORE[4], inbox)}
+        {inbox > 0 && !more && item(MORE[2], inbox)}
       </div>
       <button className={`mt-3 flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] ${inMore && !more ? 'text-accent' : 'text-mute'} hover:text-ink`} onClick={toggleMore}>
         <Icon name="chevron" className={`h-3 w-3 transition ${more ? 'rotate-90' : ''}`} /> Plus
@@ -237,8 +235,8 @@ function CreateMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
         {mobile && (
           <>
             <div className="my-3 h-px bg-line/60" />
-            <div className="grid grid-cols-3 gap-1">
-              {([['inbox', 'Inbox', 'inbox'], ['projects', 'Projets', 'folder'], ['objectives', 'Objectifs', 'target'], ['favorites', 'Favoris', 'star'], ['maps', 'Maps', 'map'], ['settings', 'Réglages', 'gear']] as const).map(([v, l, i]) => (
+            <div className="grid grid-cols-4 gap-1">
+              {([['inbox', 'Inbox', 'inbox'], ['favorites', 'Favoris', 'star'], ['maps', 'Maps', 'map'], ['settings', 'Réglages', 'gear']] as const).map(([v, l, i]) => (
                 <button key={v} className="flex flex-col items-center gap-1 rounded-xl py-2.5 text-[11.5px] text-ink/80 hover:bg-ink/5" onClick={() => go(v)}><Icon name={i} />{l}</button>
               ))}
             </div>

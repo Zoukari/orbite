@@ -4,7 +4,7 @@
 
 /* ═════════ Design tokens ═════════ */
 :root {
-  --bg: 246 247 250;
+  --bg: 244 245 250;
   --surface: 255 255 255;
   --raised: 240 242 247;
   --line: 222 225 234;
@@ -19,6 +19,17 @@
   --glass: rgba(255, 255, 255, 0.72);
   --star: transparent;
   color-scheme: light;
+}
+/* Fond clair : papier quadrillé + halos colorés, pour ne pas être fade */
+:root:not(.dark) body {
+  background-color: rgb(var(--bg));
+  background-image:
+    radial-gradient(ellipse 60% 45% at 15% 0%, rgba(110, 130, 255, 0.10), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(242, 180, 90, 0.08), transparent 70%),
+    linear-gradient(rgba(79, 102, 230, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 102, 230, 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+  background-attachment: fixed;
 }
 .dark {
   --bg: 5 6 10;
@@ -80,8 +91,15 @@ button { -webkit-user-select: none; user-select: none; }
   animation: drift 90s ease-in-out infinite alternate;
 }
 .space.calm::before { opacity: 0.35; }
-.stars { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s; }
-.dark .stars { opacity: 1; }
+.stars { position: absolute; inset: 0; opacity: 1; transition: opacity 1.2s; }
+:root:not(.dark) .space::before {
+  content: ''; position: absolute; inset: -20%;
+  background:
+    radial-gradient(ellipse 45% 35% at 25% 30%, rgba(110, 130, 255, 0.10), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 80% 75%, rgba(242, 180, 90, 0.08), transparent 70%),
+    radial-gradient(ellipse 35% 30% at 70% 15%, rgba(111, 224, 184, 0.07), transparent 70%);
+  animation: drift 90s ease-in-out infinite alternate;
+}
 .space.calm .stars { opacity: 0.4; }
 @keyframes drift { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 1.5%, 0) scale(1.05); } }
 @keyframes twinkle { 0%, 100% { opacity: .25 } 50% { opacity: .8 } }

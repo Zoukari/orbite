@@ -6,6 +6,8 @@ import { exportTasksCsv } from '../lib/backup'
 import { plainExcerpt } from '../lib/markdown'
 import { TYPE_META } from '../lib/meta'
 import { TaskRow } from '../components/TaskRow'
+import { ProjectTree } from '../components/ProjectTree'
+import { TopThree } from '../components/Priorities'
 import { Empty, Icon, Info, ProgressBar, StatusPill, TypeGlyph, Segmented } from '../components/ui'
 import type { Entity, EntityType } from '../lib/types'
 
@@ -13,7 +15,7 @@ export function Page({ title, sub, actions, children }: { title: string; sub?: R
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-10">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3 px-1">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3 px-1 pr-12 md:pr-1">
           <div>
             <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
             {sub && <div className="mt-1 text-sm text-mute">{sub}</div>}
@@ -28,6 +30,21 @@ export function Page({ title, sub, actions, children }: { title: string; sub?: R
 
 // ───────── Tâches : panneau dédié, organisé par horizon temporel ─────────
 export function TasksView() {
+  const [mode, setMode] = useState<'projects' | 'dates'>(() => { try { return (localStorage.getItem('orbite.tasksMode') as any) || 'projects' } catch { return 'projects' } })
+  const setM = (m: 'projects' | 'dates') => { setMode(m); try { localStorage.setItem('orbite.tasksMode', m) } catch {} }
+  const [doneToo, setDoneToo] = useState(false)
+  const toggle = <Segmented value={mode} onChange={setM} options={[{ value: 'projects', label: 'Projets' }, { value: 'dates', label: 'Dates' }]} />
+  if (mode === 'projects')
+    return (
+      <Page title="Tâches" actions={<>{toggle}<button className={`btn-ghost text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? 'Masquer faites' : 'Voir faites'}</button></>}>
+        <div className="mb-5"><TopThree /></div>
+        <ProjectTree showDone={doneToo} />
+      </Page>
+    )
+  return <TasksByDate toggle={toggle} />
+}
+
+function TasksByDate({ toggle }: { toggle: ReactNode }) {
   const ents = useData((s) => s.entities)
   const [showDone, setShowDone] = useState(false)
   const [project, setProject] = useState('')
@@ -55,9 +72,9 @@ export function TasksView() {
   return (
     <Page
       title="Tâches"
-      sub={`${Object.values(groups).flat().filter((t) => !t.done).length} ouvertes`}
       actions={
         <>
+          {toggle}
           <select className="input !w-auto !py-1.5 text-xs" value={project} onChange={(e) => setProject(e.target.value)}>
             <option value="">Tous les projets</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
@@ -138,24 +155,25 @@ const NOTE_TYPES: { t: EntityType; label: string; desc?: string }[] = [
 ]
 export function NotesView() {
   const ents = useData((s) => s.entities)
-  const [filter, setFilter] = useState('')
-  const [kind, setKind] = useState<'all' | EntityType>('all')
+  const [q, setQ] = useState('')
+  const [txt, setTxt] = useState('')
+  const nq = q.trim().toLowerCase()
   const notes = Object.values(ents)
-    .filter((e) => ['note', 'idea', 'text', 'checklist', 'document', 'link'].includes(e.type) && !e.archived)
-    .filter((e) => kind === 'all' || e.type === kind)
-    .filter((e) => !filter || e.projectIds?.includes(filter) || e.linkedIds?.includes(filter) || e.parentId === filter)
+    .filter((e) => ['note', 'idea', 'text', 'checklist', 'document'].includes(e.type) && !e.archived)
+    .filter((e) => !nq || e.title.toLowerCase().includes(nq) || (e.description || '').toLowerCase().includes(nq))
     .sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || b.updatedAt.localeCompare(a.updatedAt))
-  const projects = Object.values(ents).filter((e) => ['project', 'subproject', 'objective', 'category'].includes(e.type) && !e.archived)
-  const make = (t: EntityType) => {
-    const n = useData.getState().create({ type: t, title: '', projectIds: filter ? [filter] : undefined, checklist: t === 'checklist' ? [] : undefined })
-    useUI.getState().open(n.id)
+  const make = (t: EntityType, title = '') => {
+    const n = useData.getState().create({ type: t, title, checklist: t === 'checklist' ? [] : undefined })
+    if (!title) useUI.getState().open(n.id)
   }
   return (
-    <Page title="Notes" actions={<select className="input !w-auto !py-1.5 text-xs" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="">Toutes</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}>
-      <div className="mb-4 flex flex-wrap gap-1.5" data-dropzone="notes">
-        {NOTE_TYPES.map((n) => <button key={n.t} className="btn-soft text-xs" onClick={() => make(n.t)}><span style={{ color: TYPE_META[n.t].tint }}>{TYPE_META[n.t].glyph}</span>{n.label}</button>)}
-      </div>
-      <div className="mb-4"><Segmented value={kind} onChange={setKind} options={[{ value: 'all', label: 'Tout' }, { value: 'note', label: 'Notes' }, { value: 'idea', label: 'Idées' }, { value: 'checklist', label: 'Checklists' }, { value: 'document', label: 'Docs' }]} /></div>
+    <Page title="Notes" actions={<input className="input !w-40 !py-1.5 text-xs" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />}>
+      <form className="card mb-5 flex items-center gap-2 px-3 py-2" data-dropzone="notes" onSubmit={(e) => { e.preventDefault(); if (!txt.trim()) return; make('note', txt.trim()); setTxt('') }}>
+        <Icon name="plus" className="h-4 w-4 text-mute" />
+        <input className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-mute/70" placeholder="Note rapide…" value={txt} onChange={(e) => setTxt(e.target.value)} />
+        <button type="button" className="btn-ghost !px-2 text-xs" onClick={() => make('note')} title="Note longue">≡</button>
+        <button type="button" className="btn-ghost !px-2 text-xs" onClick={() => make('checklist')} title="Checklist">☑</button>
+      </form>
       {!notes.length ? <Empty title="Aucune note" /> : (
         <div className="columns-1 gap-3 sm:columns-2 lg:columns-3">
           {notes.map((n) => {

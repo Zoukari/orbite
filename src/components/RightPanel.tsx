@@ -4,10 +4,11 @@ import { HORIZONS, horizonOf, today as todayStr, type HorizonKey } from '../lib/
 import type { Entity } from '../lib/types'
 import { TaskRow } from './TaskRow'
 import { TopThree } from './Priorities'
+import { ProjectTree } from './ProjectTree'
 import { Icon, Info, ProgressBar, TypeGlyph } from './ui'
 import { QuoteLine } from './Quote'
 
-type Tab = 'today' | 'objectives' | 'later'
+type Tab = 'today' | 'projects' | 'later'
 
 // Sidebar droite de la Map : ce que je dois faire maintenant, sans quitter la carte.
 export function RightPanel({ onClose }: { onClose?: () => void }) {
@@ -29,7 +30,7 @@ export function RightPanel({ onClose }: { onClose?: () => void }) {
   return (
     <div className="flex h-full flex-col" data-dropzone="tasks">
       <div className="flex items-center gap-1 px-4 pb-2 pt-4">
-        {([['today', "Aujourd'hui"], ['objectives', 'Objectifs'], ['later', 'Horizon']] as const).map(([k, l]) => (
+        {([['today', "Aujourd'hui"], ['projects', 'Projets'], ['later', 'Dates']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${tab === k ? 'bg-ink/[0.07] text-ink' : 'text-mute hover:text-ink'}`}>{l}</button>
         ))}
         <div className="flex-1" />
@@ -58,17 +59,7 @@ export function RightPanel({ onClose }: { onClose?: () => void }) {
 
           </>
         )}
-        {tab === 'objectives' && (
-          <section className="space-y-1">
-            {objectives.map((o) => (
-              <button key={o.id} className="w-full rounded-2xl px-2.5 py-2.5 text-left hover:bg-ink/[0.04]" onClick={() => useUI.getState().open(o.id)}>
-                <div className="mb-1.5 flex items-center gap-2"><TypeGlyph e={o} size="sm" /><span className="flex-1 truncate text-[13.5px] font-medium">{o.title}</span></div>
-                <ProgressBar value={progressOf(ents, o) ?? 0} color={o.color} />
-              </button>
-            ))}
-            {!objectives.length && <div className="px-3 py-6 text-center text-xs text-mute">Aucun objectif en cours.</div>}
-          </section>
-        )}
+        {tab === 'projects' && <ProjectTree compact />}
         {tab === 'later' && (
           <>
             <div className="flex flex-wrap gap-1 px-1">
