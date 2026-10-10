@@ -196,7 +196,6 @@ function Sidebar({ onCreate }: { onCreate: () => void }) {
           <Icon name="gear" className="h-[17px] w-[17px]" /> Réglages
           {session && <span title={`Cloud : ${sync}`} className={`ml-auto h-1.5 w-1.5 rounded-full ${sync === 'error' ? 'bg-[#ff7a7a]' : sync === 'syncing' ? 'bg-accent' : 'bg-[#6fe0b8]'}`} />}
         </button>
-        <button className="icon-btn !h-8 !w-8" title="Thème" onClick={() => useData.getState().setSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}><Icon name={theme === 'dark' ? 'sun' : 'moon'} className="h-4 w-4" /></button>
       </div>
     </nav>
   )

@@ -82,6 +82,22 @@ export const useData = create<DataState>((set, get) => ({
     if (initOnce) return initOnce
     initOnce = (async () => {
     await get().reload()
+    // rattrapage : les tâches liées à un projet de la map mais absentes de la map y sont placées
+    {
+      const ents = get().entities
+      const patches: { id: string; patch: Partial<Entity> }[] = []
+      const tmp = { ...ents }
+      for (const e of Object.values(ents)) {
+        const a = mapAnchor(tmp, e)
+        if (!a) continue
+        const pos = placeChild(tmp, a)
+        const patch = { parentId: a.id, mapId: a.mapId, ...pos }
+        tmp[e.id] = { ...e, ...patch }
+        patches.push({ id: e.id, patch })
+      }
+      if (patches.length) get().updateMany(patches)
+      if (get().settings.theme !== 'dark') get().setSettings({ theme: 'dark' })
+    }
     const n = get().rollover()
     if (n) console.info(`[orbite] ${n} tâche(s) reportée(s)`)
     set({ ready: true })
@@ -112,6 +128,9 @@ export const useData = create<DataState>((set, get) => ({
     if (e.type === 'task' && !e.status) e.status = 'todo'
     if ((e.type === 'project' || e.type === 'subproject') && !e.status) e.status = 'todo'
     if ((e.type === 'project' || e.type === 'subproject' || e.type === 'objective') && !e.progressMode) e.progressMode = 'auto'
+    // une tâche / un jalon / un objectif rattaché à un élément de la map apparaît sur la map, sous lui
+    const anchor = mapAnchor(get().entities, e)
+    if (anchor) Object.assign(e, { parentId: anchor.id, mapId: anchor.mapId, ...placeChild(get().entities, anchor) })
     set((s) => ({ entities: { ...s.entities, [e.id]: e }, rev: s.rev + 1 }))
     persistEntities([e])
     return e
@@ -348,6 +367,17 @@ export const useData = create<DataState>((set, get) => ({
 // ───────── helpers relationnels ─────────
 
 export const uniq = <T,>(a: T[]) => Array.from(new Set(a))
+
+// Élément de la map auquel rattacher une entité qui n'y est pas encore
+export function mapAnchor(ents: Record<string, Entity>, e: Entity): Entity | null {
+  if (e.mapId || e.parentId || e.archived || e.deleted || e.inbox) return null
+  if (!['task', 'milestone', 'objective'].includes(e.type)) return null
+  for (const id of [...(e.objectiveIds || []), ...(e.projectIds || [])]) {
+    const a = ents[id]
+    if (a && a.mapId && !a.archived) return a
+  }
+  return null
+}
 
 export function childrenOf(ents: Record<string, Entity>, id: string) {
   const out: Entity[] = []

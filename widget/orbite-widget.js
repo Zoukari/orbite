@@ -320,8 +320,10 @@ if (mode === 'capture') {
     errorWidget(w)
   }
   w.addSpacer()
+  const df = new DateFormatter(); df.dateFormat = 'HH:mm'
+  const f = w.addText(`Orbite · ${mode} · ${df.string(new Date())}`)
+  f.font = Font.systemFont(8); f.textColor = new Color('#868da6', 0.6)
   if (config.runsInWidget) Script.setWidget(w)
-  else if (mode.startsWith('inbox')) await w.presentMedium()
-  else await w.presentLarge()
+  else await w.presentMedium()
   Script.complete()
 }

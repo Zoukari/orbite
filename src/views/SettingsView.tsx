@@ -40,7 +40,6 @@ export function SettingsView() {
         <CloudCard />
 
         <Card title="Apparence">
-          <Row label="Thème"><Segmented value={s.theme} onChange={(v) => set({ theme: v })} options={[{ value: 'dark', label: 'Sombre' }, { value: 'light', label: 'Clair' }]} /></Row>
           <Row label="Animations flottantes" hint="Coupées automatiquement au-delà de 140 éléments visibles"><Toggle on={s.animations} onChange={(v) => set({ animations: v })} /></Row>
           <Row label="Phrases du jour"><Toggle on={s.showQuotes} onChange={(v) => set({ showQuotes: v })} /></Row>
           {s.hiddenQuotes.length > 0 && <Row label={`${s.hiddenQuotes.length} phrase(s) masquée(s)`}><button className="btn-ghost text-xs" onClick={() => set({ hiddenQuotes: [] })}>Réafficher</button></Row>}
