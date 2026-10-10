@@ -6,7 +6,7 @@ import { exportTasksCsv } from '../lib/backup'
 import { plainExcerpt } from '../lib/markdown'
 import { TYPE_META } from '../lib/meta'
 import { TaskRow } from '../components/TaskRow'
-import { Empty, Icon, ProgressBar, StatusPill, TypeGlyph, Segmented } from '../components/ui'
+import { Empty, Icon, Info, ProgressBar, StatusPill, TypeGlyph, Segmented } from '../components/ui'
 import type { Entity, EntityType } from '../lib/types'
 
 export function Page({ title, sub, actions, children }: { title: string; sub?: ReactNode; actions?: ReactNode; children: ReactNode }) {
@@ -81,7 +81,7 @@ export function TasksView() {
               <button className="flex w-full items-center gap-2 px-2 py-1.5" onClick={() => setCollapsed({ ...collapsed, [h.key]: !isCol })}>
                 <Icon name="chevron" className={`h-3.5 w-3.5 text-mute transition ${isCol ? '' : 'rotate-90'}`} />
                 <span className={`font-display text-sm font-semibold ${h.key === 'overdue' ? 'text-[#ff8a8a]' : ''}`}>{h.label}</span>
-                {h.hint && <span className="text-[11px] text-mute">{h.hint}</span>}
+                {h.hint && <Info text={h.hint} />}
                 <span className="ml-auto font-mono text-xs text-mute">{list.length}</span>
               </button>
               {!isCol && (list.length ? list.map((t) => <TaskRow key={t.id} t={t} />) : <div className="px-3 py-3 text-sm text-mute">Rien de prévu.</div>)}
@@ -103,12 +103,12 @@ export function InboxView() {
   const data = useData.getState()
   const ui = useUI.getState()
   return (
-    <Page title="Inbox" sub="Capture d’abord, organise ensuite.">
+    <Page title="Inbox">
       <form className="card mb-5 flex items-center gap-2 px-3 py-2" onSubmit={(e) => { e.preventDefault(); if (!text.trim()) return; data.create({ type: 'idea', title: text.trim(), inbox: true }); setText('') }}>
         <Icon name="bolt" className="h-4 w-4 text-mute" />
         <input autoFocus className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-mute/70" placeholder="Une pensée, une idée, un truc à ne pas oublier…" value={text} onChange={(e) => setText(e.target.value)} />
       </form>
-      {!items.length ? <Empty title="Inbox vide" hint="Tout est rangé. Utilise « Capture rapide » n’importe où." /> : (
+      {!items.length ? <Empty title="Inbox vide" /> : (
         <div className="space-y-2">
           {items.map((e) => (
             <div key={e.id} className="card group flex flex-wrap items-center gap-2 px-3 py-2.5">
@@ -156,7 +156,7 @@ export function NotesView() {
         {NOTE_TYPES.map((n) => <button key={n.t} className="btn-soft text-xs" onClick={() => make(n.t)}><span style={{ color: TYPE_META[n.t].tint }}>{TYPE_META[n.t].glyph}</span>{n.label}</button>)}
       </div>
       <div className="mb-4"><Segmented value={kind} onChange={setKind} options={[{ value: 'all', label: 'Tout' }, { value: 'note', label: 'Notes' }, { value: 'idea', label: 'Idées' }, { value: 'checklist', label: 'Checklists' }, { value: 'document', label: 'Docs' }]} /></div>
-      {!notes.length ? <Empty title="Aucune note" hint="Crée une note, ou envoie un élément de la map vers les Notes." /> : (
+      {!notes.length ? <Empty title="Aucune note" /> : (
         <div className="columns-1 gap-3 sm:columns-2 lg:columns-3">
           {notes.map((n) => {
             const links = [...(n.projectIds || []), ...(n.linkedIds || [])].map((l) => ents[l]).filter(Boolean).slice(0, 3)
@@ -240,7 +240,7 @@ export function ObjectivesView() {
   const milestones = Object.values(ents).filter((e) => e.type === 'milestone' && !e.archived).sort((a, b) => (a.date || '9').localeCompare(b.date || '9'))
   const bar = (p: number) => '█'.repeat(Math.round(p / 10)) + '░'.repeat(10 - Math.round(p / 10))
   return (
-    <Page title="Objectifs" sub="Vision → objectif → projet → tâches. Sans structure imposée." actions={<button className="btn-primary text-xs" onClick={() => { const o = useData.getState().create({ type: 'objective', title: 'Nouvel objectif' }); useUI.getState().open(o.id) }}><Icon name="plus" className="h-4 w-4" />Objectif</button>}>
+    <Page title="Objectifs" actions={<button className="btn-primary text-xs" onClick={() => { const o = useData.getState().create({ type: 'objective', title: 'Nouvel objectif' }); useUI.getState().open(o.id) }}><Icon name="plus" className="h-4 w-4" />Objectif</button>}>
       <div className="space-y-2">
         {list.map((o) => {
           const p = progressOf(ents, o) ?? 0
@@ -283,7 +283,7 @@ export function FavoritesView() {
   const ui = useUI.getState()
   return (
     <Page title="Favoris">
-      {!favs.length ? <Empty title="Aucun favori" hint="Étoile une map, un projet, une note ou une branche." /> : (
+      {!favs.length ? <Empty title="Aucun favori" /> : (
         <div className="grid gap-2 sm:grid-cols-2">
           {favs.map((f) => {
             const r = resolve(ents, f)
@@ -315,7 +315,7 @@ export function MapsView() {
     useUI.getState().go('map')
   }
   return (
-    <Page title="Maps" sub="Une grande map de ta vie, ou plusieurs maps liées entre elles.">
+    <Page title="Maps">
       <form className="card mb-5 flex gap-2 p-2" onSubmit={(e) => { e.preventDefault(); create() }}>
         <input className="flex-1 bg-transparent px-3 text-sm outline-none" placeholder="Nom de la nouvelle map" value={name} onChange={(e) => setName(e.target.value)} />
         <button className="btn-primary text-xs">Créer</button>
@@ -348,7 +348,7 @@ export function MapsView() {
           )
         })}
       </div>
-      <p className="mt-4 px-1 text-xs text-mute">Pour lier deux maps : sur une map, double-clic sur le vide → « Lien de Map », puis choisis la map cible dans la fiche.</p>
+      <div className="mt-4 px-1"><Info text="Pour lier deux maps : sur une map, double-clic sur le vide → « Lien de Map », puis choisis la map cible dans la fiche." /></div>
     </Page>
   )
 }

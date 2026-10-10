@@ -3,7 +3,7 @@ import { useData, useUI, resolve, ancestors, displayTitle, progressOf, relationC
 import { TYPE_META, PALETTE, ICONS } from '../lib/meta'
 import { fmtDay, fmtRelative, recurrenceLabel, DAY_NAMES, today } from '../lib/dates'
 import { Markdown, toggleCheckboxLine } from '../lib/markdown'
-import { Icon, ProgressBar, PriorityBadge, Segmented, TypeGlyph, Toggle, useIsMobile } from './ui'
+import { Icon, Info, ProgressBar, PriorityBadge, Segmented, TypeGlyph, Toggle, useIsMobile } from './ui'
 import { TaskRow } from './TaskRow'
 import type { Entity, Recurrence } from '../lib/types'
 
@@ -84,8 +84,8 @@ function Header({ e, raw, onClose }: { e: Entity; raw: Entity; onClose: () => vo
         />
       </div>
       {raw.type === 'ref' && (
-        <div className="mt-2 rounded-xl bg-accent/10 px-3 py-1.5 text-[11.5px] text-accent">
-          ⇢ Référence — tu modifies l’original « {e.title} », partout où il apparaît.
+        <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent">
+          ⇢ Référence <Info text={`Tu modifies l’original « ${e.title} » : le changement apparaît partout où il est placé.`} />
         </div>
       )}
     </div>
@@ -98,6 +98,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
   const up = (patch: Partial<Entity>) => useData.getState().update(e.id, patch)
   const [more, setMore] = useState(false)
   const isProj = ['project', 'subproject', 'objective', 'vision', 'category'].includes(e.type)
+  const isWork = ['project', 'subproject', 'objective'].includes(e.type)
   const isTask = e.type === 'task'
   const progress = progressOf(ents, e)
   const noteLike = ['note', 'idea', 'text', 'document'].includes(e.type)
@@ -112,7 +113,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
       )}
 
       {/* Statut / priorité */}
-      {(isProj || isTask || e.type === 'milestone') && (
+      {(isWork || isTask || e.type === 'milestone') && (
         <div className="grid grid-cols-2 gap-3">
           {e.type !== 'milestone' && (
             <Field label="Statut">
@@ -133,14 +134,14 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
         </div>
       )}
 
-      {(isTask || isProj) && (
-        <Field label="Priorité">
-          <div className="flex flex-wrap gap-1.5">
+      {(isTask || isWork) && (
+        <Field label="Priorité" right={<span className="text-[11px] font-medium" style={{ color: settings.priorities.find((p) => p.level === e.priority)?.color }}>{settings.priorities.find((p) => p.level === e.priority)?.label}</span>}>
+          <div className="flex gap-1">
             {settings.priorities.map((p) => (
-              <button key={p.level} onClick={() => up({ priority: e.priority === p.level ? undefined : p.level })}
-                className="rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition"
-                style={{ color: p.color, borderColor: e.priority === p.level ? p.color : 'rgb(var(--line))', background: e.priority === p.level ? `${p.color}1f` : 'transparent' }}>
-                {p.glyph} {p.label}
+              <button key={p.level} title={p.label} onClick={() => up({ priority: e.priority === p.level ? undefined : p.level })}
+                className="flex h-8 flex-1 items-center justify-center rounded-lg border text-[13px] transition"
+                style={{ color: p.color, borderColor: e.priority === p.level ? p.color : 'rgb(var(--line) / .7)', background: e.priority === p.level ? `${p.color}1f` : 'transparent' }}>
+                {p.glyph}
               </button>
             ))}
           </div>
@@ -155,7 +156,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
               <input type="range" min={0} max={100} step={5} value={e.progress ?? 0} onChange={(ev) => up({ progress: Number(ev.target.value) })} className="flex-1 accent-[rgb(var(--accent))]" />
               <span className="w-10 text-right font-mono text-sm">{e.progress ?? 0}%</span>
             </div>
-          ) : progress != null ? <ProgressBar value={progress} color={e.color} /> : <div className="text-xs text-mute">Calculée depuis les tâches liées (aucune pour l’instant).</div>}
+          ) : progress != null ? <ProgressBar value={progress} color={e.color} /> : <div className="flex items-center gap-1.5 text-xs text-mute">—<Info text="Calculée automatiquement depuis les tâches liées. Aucune pour l’instant." /></div>}
         </Field>
       )}
 
@@ -195,7 +196,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
 
       {/* Détails secondaires (progressive disclosure) */}
       <button className="flex w-full items-center gap-2 text-xs font-medium text-mute hover:text-ink" onClick={() => setMore(!more)}>
-        <Icon name="chevron" className={`h-3.5 w-3.5 transition ${more ? 'rotate-90' : ''}`} /> {more ? 'Moins' : 'Apparence, tags, historique, commentaires'}
+        <Icon name="chevron" className={`h-3.5 w-3.5 transition ${more ? 'rotate-90' : ''}`} /> {more ? 'Moins' : 'Plus'}
       </button>
       {more && (
         <div className="space-y-5">
@@ -354,13 +355,13 @@ function Relations({ id }: { id: string }) {
   const list = kind ? (kind === 'tasks' ? relatedTasks(ents, id) : relatedEntities(ents, id, kind)) : []
   return (
     <div>
-      <div className="grid grid-cols-3 gap-1.5">
-        {labels.map(([k, l]) => (
-          <button key={k} onClick={() => setKind(kind === k ? null : k)} className={`rounded-xl border px-2 py-2 text-left transition ${kind === k ? 'border-accent/60 bg-accent/10' : 'border-line/70 hover:bg-ink/5'}`}>
-            <div className="font-display text-lg font-semibold leading-none">{c[k]}</div>
-            <div className="mt-0.5 text-[11px] text-mute">{l}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {labels.filter(([k]) => c[k] > 0).map(([k, l]) => (
+          <button key={k} onClick={() => setKind(kind === k ? null : k)} className={`rounded-full border px-2.5 py-1 text-[12px] transition ${kind === k ? 'border-accent/60 bg-accent/10 text-ink' : 'border-line/70 text-mute hover:text-ink'}`}>
+            <b className="font-semibold text-ink">{c[k]}</b> {c[k] > 1 ? l : l.replace(/s$/, '')}
           </button>
         ))}
+        <button onClick={() => setKind(kind === 'tasks' ? null : 'tasks')} className="rounded-full border border-dashed border-line/70 px-2.5 py-1 text-[12px] text-mute hover:text-ink">+ tâche</button>
       </div>
       {kind && (
         <div className="fade mt-2 rounded-2xl border border-line/60 p-1">
@@ -482,7 +483,7 @@ function Footer({ e, raw }: { e: Entity; raw: Entity }) {
           if (t.type !== 'map') useData.getState().link(e.id, t.id)
           useUI.getState().notify('Ajouté à la Mind Map (référence liée)')
         } } })}>
-          <Icon name="map" className="h-4 w-4" /> Ajouter à la Mind Map
+          <Icon name="map" className="h-4 w-4" /> Mettre sur la map
         </button>
       )}
       {onMap && (
@@ -491,12 +492,12 @@ function Footer({ e, raw }: { e: Entity; raw: Entity }) {
         </button>
       )}
       <button className="btn-soft text-xs" onClick={() => ui.set({ share: raw.id })}><Icon name="share" className="h-4 w-4" /> Partager</button>
-      <button className="btn-soft text-xs" onClick={() => { data.archive(raw.id, !raw.archived); ui.set({ detailId: null }) }}><Icon name="archive" className="h-4 w-4" />{raw.archived ? 'Désarchiver' : 'Archiver'}</button>
-      <button className="btn text-xs text-[#ff7a7a] hover:bg-[#ff7a7a]/10" onClick={() => {
+      <div className="flex-1" />
+      <button className="icon-btn" title={raw.archived ? 'Désarchiver' : 'Archiver'} onClick={() => { data.archive(raw.id, !raw.archived); ui.set({ detailId: null }) }}><Icon name="archive" className="h-4 w-4" /></button>
+      <button className="icon-btn text-[#ff7a7a] hover:!text-[#ff7a7a]" title="Supprimer" onClick={() => {
         const n = descendants(data.entities, raw.id).length
         if (confirm(n ? `Supprimer avec ${n} élément(s) enfant(s) ?` : 'Supprimer définitivement ?')) { data.remove(raw.id); ui.set({ detailId: null }) }
-      }}><Icon name="trash" className="h-4 w-4" />Supprimer</button>
-      <div className="w-full pt-1 text-[10.5px] text-mute">Créé {fmtRelative(e.createdAt)} · modifié {fmtRelative(e.updatedAt)}</div>
+      }}><Icon name="trash" className="h-4 w-4" /></button>
     </div>
   )
 }

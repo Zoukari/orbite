@@ -4,7 +4,7 @@ import { HORIZONS, horizonOf, today as todayStr, type HorizonKey } from '../lib/
 import type { Entity } from '../lib/types'
 import { TaskRow } from './TaskRow'
 import { TopThree } from './Priorities'
-import { Icon, ProgressBar, TypeGlyph } from './ui'
+import { Icon, Info, ProgressBar, TypeGlyph } from './ui'
 import { QuoteLine } from './Quote'
 
 type Tab = 'today' | 'objectives' | 'later'
@@ -33,6 +33,7 @@ export function RightPanel({ onClose }: { onClose?: () => void }) {
           <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${tab === k ? 'bg-ink/[0.07] text-ink' : 'text-mute hover:text-ink'}`}>{l}</button>
         ))}
         <div className="flex-1" />
+        <Info className="mr-1" text="Glisse une tâche d’ici vers la map pour l’y placer. Glisse un élément de la map ici pour en faire une tâche." />
         {onClose && <button className="icon-btn !h-8 !w-8" onClick={onClose}><Icon name="close" className="h-4 w-4" /></button>}
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-6">
@@ -54,12 +55,7 @@ export function RightPanel({ onClose }: { onClose?: () => void }) {
               </form>
               {(groups.done || []).filter((t) => t.doneAt && new Date(t.doneAt).toDateString() === new Date().toDateString()).map((t) => <TaskRow key={t.id} t={t} compact />)}
             </section>
-            {(groups.inbox?.length ?? 0) > 0 && (
-              <button className="flex w-full items-center justify-between rounded-xl border border-line/60 px-3 py-2 text-xs text-mute hover:text-ink" onClick={() => useUI.getState().go('inbox')}>
-                <span>Inbox à organiser</span><span className="font-mono">{groups.inbox.length}</span>
-              </button>
-            )}
-            <div className="px-2"><QuoteLine /></div>
+
           </>
         )}
         {tab === 'objectives' && (
@@ -77,16 +73,14 @@ export function RightPanel({ onClose }: { onClose?: () => void }) {
           <>
             <div className="flex flex-wrap gap-1 px-1">
               {HORIZONS.filter((h) => !['today', 'overdue'].includes(h.key)).map((h) => (
-                <button key={h.key} onClick={() => setHz(h.key)} className={`chip !py-1 ${hz === h.key ? '!border-accent !text-accent' : ''}`}>{h.label} <span className="font-mono">{groups[h.key]?.length || 0}</span></button>
+                <button key={h.key} title={h.hint} onClick={() => setHz(h.key)} className={`chip !py-1 ${hz === h.key ? '!border-accent !text-accent' : ''}`}>{h.label} <span className="font-mono">{groups[h.key]?.length || 0}</span></button>
               ))}
             </div>
             <section>{(groups[hz] || []).map((t) => <TaskRow key={t.id} t={t} />)}{!(groups[hz] || []).length && <div className="px-3 py-6 text-center text-xs text-mute">Rien ici.</div>}</section>
           </>
         )}
       </div>
-      <div className="mx-3 mb-3 hidden rounded-xl border border-dashed border-line/70 px-3 py-2 text-center text-[11px] text-mute md:block">
-        Glisse une tâche sur la map · glisse un élément de la map ici
-      </div>
+
     </div>
   )
 }

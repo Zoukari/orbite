@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useData, useUI, displayTitle, progressOf, relatedTasks, resolve, descendants } from '../lib/store'
 import { shareLink, downloadSnapshot, type ShareSnapshot } from '../lib/backup'
 import { createBlankMap, seedDemo } from '../lib/demo'
-import { Icon, Modal, ProgressBar, TypeGlyph } from './ui'
+import { Icon, Info, Modal, ProgressBar, TypeGlyph } from './ui'
 import { TaskRow } from './TaskRow'
 import { TopThree } from './Priorities'
 import { QuoteLine } from './Quote'
@@ -50,8 +50,7 @@ export function DropAsk() {
       <div className="space-y-1.5 px-4 pb-4">
         {opts.map((o) => (
           <button key={o.label} onClick={() => { o.act(); close() }} className="w-full rounded-2xl border border-line/70 px-4 py-3 text-left transition hover:border-accent/50 hover:bg-accent/5">
-            <div className="text-sm font-medium">{o.label}</div>
-            <div className="text-xs text-mute">{o.hint}</div>
+            <div className="flex items-center justify-between gap-2 text-sm font-medium">{o.label}<Info text={o.hint} /></div>
           </button>
         ))}
       </div>
@@ -75,9 +74,7 @@ export function ShareDialog() {
   return (
     <Modal open onClose={close} title="Partager en lecture seule">
       <div className="space-y-4 px-5 pb-5">
-        <div className="rounded-2xl bg-ink/[0.04] p-3 text-[12.5px] text-mute">
-          Seul <b className="text-ink">« {e.title} »</b> et ses {res ? res.snap.entities.length - 1 : '…'} élément(s) enfants sont inclus. Commentaires, historique et le reste de tes données ne sont jamais partagés. Le lien contient l’instantané compressé : rien n’est envoyé sur un serveur.
-        </div>
+        <div className="flex items-center gap-2 text-[13px]"><span>« {e.title} » + {res ? res.snap.entities.length - 1 : '…'} élément(s)</span><Info text="Seule cette branche est partagée. Commentaires, historique et le reste de tes données ne le sont jamais. Le lien contient l’instantané compressé : rien n’est envoyé sur un serveur." /></div>
         {res && !tooLong && (
           <div>
             <div className="label">Lien</div>

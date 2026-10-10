@@ -69,11 +69,14 @@ function useShortcuts() {
 const NAV: { id: ViewId; label: string; icon: string; drop?: string }[] = [
   { id: 'home', label: 'Accueil', icon: 'home' },
   { id: 'map', label: 'Map', icon: 'map' },
-  { id: 'favorites', label: 'Favoris', icon: 'star' },
+  { id: 'tasks', label: 'Tâches', icon: 'tasks', drop: 'tasks' },
+  { id: 'notes', label: 'Notes', icon: 'notes', drop: 'notes' }
+]
+const MORE: { id: ViewId; label: string; icon: string }[] = [
   { id: 'projects', label: 'Projets', icon: 'folder' },
   { id: 'objectives', label: 'Objectifs', icon: 'target' },
-  { id: 'tasks', label: 'Tâches', icon: 'tasks', drop: 'tasks' },
-  { id: 'notes', label: 'Notes', icon: 'notes', drop: 'notes' },
+  { id: 'favorites', label: 'Favoris', icon: 'star' },
+  { id: 'maps', label: 'Toutes les maps', icon: 'map' },
   { id: 'inbox', label: 'Inbox', icon: 'inbox' }
 ]
 
@@ -114,8 +117,8 @@ function Shell() {
           <button
             className="absolute bottom-5 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-ink text-bg shadow-xl transition hover:scale-105 active:scale-95"
             style={{ right: view === 'map' && rightPanel ? 20 : 20 }}
-            onClick={() => setCreate(true)}
-            title="Nouveau (N pour capture rapide)"
+            onClick={() => useUI.getState().set({ capture: { open: true } })}
+            title="Nouveau (N)"
           >
             <Icon name="plus" className="h-5 w-5" stroke={2} />
           </button>
@@ -149,49 +152,42 @@ function Shell() {
 
 function Sidebar({ onCreate }: { onCreate: () => void }) {
   const view = useUI((s) => s.view)
-  const ents = useData((s) => s.entities)
-  const inbox = Object.values(ents).filter((e) => e.inbox && !e.done && !e.archived).length
-  const favs = Object.values(ents).filter((e) => e.favorite && !e.archived).slice(0, 8)
+  const inbox = useData((s) => Object.values(s.entities).filter((e) => e.inbox && !e.done && !e.archived).length)
   const theme = useData((s) => s.settings.theme)
   const sync = useSync((s) => s.status)
   const session = useSync((s) => s.session)
+  const inMore = MORE.some((m) => m.id === view)
+  const [more, setMore] = useState(() => { try { return localStorage.getItem('orbite.navMore') === '1' } catch { return false } })
+  const toggleMore = () => { setMore(!more); try { localStorage.setItem('orbite.navMore', more ? '0' : '1') } catch {} }
+  const item = (n: { id: ViewId; label: string; icon: string; drop?: string }, badge?: number) => (
+    <button key={n.id} data-dropzone={n.drop} title={n.label} onClick={() => useUI.getState().go(n.id)} className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-[7px] text-[13.5px] transition ${view === n.id ? 'bg-ink/[0.07] font-medium text-ink' : 'text-ink/65 hover:bg-ink/[0.04] hover:text-ink'}`}>
+      <Icon name={n.icon} className="h-[17px] w-[17px]" />
+      {n.label}
+      {!!badge && <span className="ml-auto rounded-full bg-accent/15 px-1.5 font-mono text-[10.5px] text-accent">{badge}</span>}
+    </button>
+  )
   return (
-    <nav className="flex w-[232px] shrink-0 flex-col border-r border-line/60 bg-surface/50 px-3 pb-3 pt-5 backdrop-blur-xl">
-      <div className="mb-5 flex items-center gap-2.5 px-2">
-        <img src="/favicon.svg" alt="" className="h-7 w-7 rounded-lg" />
-        <span className="font-display text-[17px] font-semibold tracking-tight">Orbite</span>
+    <nav className="flex w-[200px] shrink-0 flex-col border-r border-line/60 bg-surface/50 px-2.5 pb-3 pt-5 backdrop-blur-xl">
+      <div className="mb-5 flex items-center gap-2 px-2">
+        <img src="/favicon.svg" alt="" className="h-6 w-6 rounded-md" />
+        <span className="flex-1 font-display text-[16px] font-semibold tracking-tight">Orbite</span>
+        <button className="icon-btn !h-8 !w-8" title="Rechercher (⌘K)" onClick={() => useUI.getState().set({ palette: true })}><Icon name="search" className="h-4 w-4" /></button>
+        <button className="icon-btn !h-8 !w-8 text-accent" title="Capture rapide (N)" onClick={() => useUI.getState().set({ capture: { open: true } })}><Icon name="bolt" className="h-4 w-4" /></button>
       </div>
-      <button className="mb-1.5 flex items-center gap-2 rounded-xl border border-line/70 bg-raised/60 px-3 py-2 text-left text-[13px] text-mute transition hover:text-ink" onClick={() => useUI.getState().set({ palette: true })}>
-        <Icon name="search" className="h-4 w-4" /> Rechercher <span className="ml-auto rounded border border-line px-1 font-mono text-[10px]">⌘K</span>
-      </button>
-      <button className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium text-accent transition hover:bg-accent/10" onClick={() => useUI.getState().set({ capture: { open: true } })}>
-        <Icon name="bolt" className="h-4 w-4" /> Capture rapide <span className="ml-auto rounded border border-accent/30 px-1 font-mono text-[10px]">N</span>
-      </button>
       <div className="space-y-0.5">
-        {NAV.map((n) => (
-          <button key={n.id} data-dropzone={n.drop} onClick={() => useUI.getState().go(n.id)} className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-[7px] text-[13.5px] transition ${view === n.id ? 'bg-ink/[0.07] font-medium text-ink' : 'text-ink/70 hover:bg-ink/[0.04] hover:text-ink'}`}>
-            <Icon name={n.icon} className="h-[17px] w-[17px]" />
-            {n.label}
-            {n.id === 'inbox' && inbox > 0 && <span className="ml-auto rounded-full bg-accent/15 px-1.5 font-mono text-[10.5px] text-accent">{inbox}</span>}
-          </button>
-        ))}
+        {NAV.map((n) => item(n))}
+        {inbox > 0 && !more && item(MORE[4], inbox)}
       </div>
-      {favs.length > 0 && (
-        <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
-          <div className="section-title mb-1 px-3">Favoris</div>
-          {favs.map((f) => (
-            <button key={f.id} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[12.5px] text-ink/70 hover:bg-ink/[0.04] hover:text-ink" onClick={() => { if (f.type === 'map') { useData.getState().setSettings({ activeMapId: f.id }); useUI.getState().go('map') } else useUI.getState().open(f.id) }}>
-              <span style={{ color: f.color || TYPE_META[f.type].tint }}>{f.icon || TYPE_META[f.type].glyph}</span><span className="truncate">{f.title}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <button className={`mt-3 flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] ${inMore && !more ? 'text-accent' : 'text-mute'} hover:text-ink`} onClick={toggleMore}>
+        <Icon name="chevron" className={`h-3 w-3 transition ${more ? 'rotate-90' : ''}`} /> Plus
+      </button>
+      {more && <div className="fade space-y-0.5">{MORE.map((m) => item(m, m.id === 'inbox' ? inbox : undefined))}</div>}
       <div className="mt-auto flex items-center gap-1 pt-3">
-        <button onClick={() => useUI.getState().go('settings')} className={`flex flex-1 items-center gap-2.5 rounded-xl px-3 py-[7px] text-[13.5px] ${view === 'settings' ? 'bg-ink/[0.07] text-ink' : 'text-ink/70 hover:bg-ink/[0.04]'}`}>
+        <button onClick={() => useUI.getState().go('settings')} className={`flex flex-1 items-center gap-2.5 rounded-xl px-3 py-[7px] text-[13.5px] ${view === 'settings' ? 'bg-ink/[0.07] text-ink' : 'text-ink/65 hover:bg-ink/[0.04]'}`}>
           <Icon name="gear" className="h-[17px] w-[17px]" /> Réglages
           {session && <span title={`Cloud : ${sync}`} className={`ml-auto h-1.5 w-1.5 rounded-full ${sync === 'error' ? 'bg-[#ff7a7a]' : sync === 'syncing' ? 'bg-accent' : 'bg-[#6fe0b8]'}`} />}
         </button>
-        <button className="icon-btn" title="Thème" onClick={() => useData.getState().setSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}><Icon name={theme === 'dark' ? 'sun' : 'moon'} className="h-4 w-4" /></button>
+        <button className="icon-btn !h-8 !w-8" title="Thème" onClick={() => useData.getState().setSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}><Icon name={theme === 'dark' ? 'sun' : 'moon'} className="h-4 w-4" /></button>
       </div>
     </nav>
   )
@@ -231,19 +227,13 @@ function CreateMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const go = (v: ViewId) => { onClose(); ui.go(v) }
   const types: [EntityType, string][] = [['idea', 'Nouvelle idée'], ['task', 'Nouvelle tâche'], ['note', 'Nouvelle note'], ['project', 'Nouveau projet'], ['objective', 'Nouvel objectif']]
   return (
-    <Modal open={open} onClose={onClose} title="Nouveau">
-      <div className="px-4 pb-4">
+    <Modal open={open} onClose={onClose} bare>
+      <div className="p-4">
         <div className="grid grid-cols-2 gap-2">
           <button className="flex items-center gap-2 rounded-2xl bg-accent/12 px-3 py-3 text-left text-sm font-medium text-accent" style={{ background: 'rgb(var(--accent) / .12)' }} onClick={() => capture()}><Icon name="bolt" className="h-4 w-4" />Capture rapide</button>
           <button className="flex items-center gap-2 rounded-2xl px-3 py-3 text-left text-sm font-medium" style={{ background: 'rgb(var(--ink) / .06)' }} onClick={() => capture(undefined, true)}><Icon name="mic" className="h-4 w-4" />Dicter</button>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-0.5">
-          {types.map(([t, l]) => (
-            <button key={t} className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-left text-sm hover:bg-ink/5" onClick={() => capture(t)}>
-              <span className="w-5 text-center" style={{ color: TYPE_META[t].tint }}>{TYPE_META[t].glyph}</span>{l}
-            </button>
-          ))}
-        </div>
+
         {mobile && (
           <>
             <div className="my-3 h-px bg-line/60" />

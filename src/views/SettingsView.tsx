@@ -6,7 +6,7 @@ import { fmtRelative } from '../lib/dates'
 import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, PALETTE } from '../lib/meta'
 import { supabase, useSync, signIn, signUp, signOut, syncNow } from '../lib/sync'
 import { Page } from './ListViews'
-import { Segmented, Toggle, Icon } from '../components/ui'
+import { Segmented, Toggle, Icon, Info } from '../components/ui'
 
 export function SettingsView() {
   const s = useData((st) => st.settings)
@@ -46,7 +46,7 @@ export function SettingsView() {
           {s.hiddenQuotes.length > 0 && <Row label={`${s.hiddenQuotes.length} phrase(s) masquée(s)`}><button className="btn-ghost text-xs" onClick={() => set({ hiddenQuotes: [] })}>Réafficher</button></Row>}
         </Card>
 
-        <Card title="Niveaux de priorité" sub="Du plus commun au plus critique. Renomme-les comme tu veux.">
+        <Card title="Niveaux de priorité" info="Du plus commun au plus critique. Renomme-les et change leurs couleurs comme tu veux.">
           <div className="space-y-2">
             {s.priorities.map((p, i) => (
               <div key={p.level} className="flex items-center gap-2">
@@ -60,7 +60,7 @@ export function SettingsView() {
           </div>
         </Card>
 
-        <Card title="Statuts" sub="Ajoute tes propres états (ex. « Prototype », « Négociation »).">
+        <Card title="Statuts" info="Ajoute tes propres états (ex. « Prototype », « Négociation »). Coche « terminé » pour qu’un statut compte comme fini.">
           <div className="space-y-2">
             {s.statuses.map((st, i) => (
               <div key={st.id} className="flex items-center gap-2">
@@ -87,9 +87,8 @@ export function SettingsView() {
           <Row label="Tout effacer" hint="Supprime toutes les données (sur cet appareil et dans le cloud)"><button className="btn text-xs text-[#ff7a7a] hover:bg-[#ff7a7a]/10" onClick={async () => { if (confirm('Effacer TOUTES tes données ? Exporte une sauvegarde avant.') && confirm('Vraiment ? Cette action est irréversible.')) { await useData.getState().wipe(); useData.getState().setSettings({ onboarded: false }) } }}>Tout effacer</button></Row>
         </Card>
 
-        <Card title="Installer l’app">
-          <p className="text-sm text-mute">iPhone : Safari → Partager → « Sur l’écran d’accueil ». Android / Chrome : menu → « Installer l’application ». Fonctionne hors ligne ; la synchro reprend au retour du réseau.</p>
-          <p className="mt-3 text-xs text-mute">Raccourcis : <kbd>⌘K</kbd> recherche · <kbd>N</kbd> capture · <kbd>Tab</kbd> enfant · <kbd>Entrée</kbd> frère · <kbd>F2</kbd> renommer · <kbd>Espace</kbd> ouvrir · <kbd>Suppr</kbd> supprimer · <kbd>Alt</kbd>+glisser = déplacer sans les enfants</p>
+        <Card title="Installer l’app" info={<>iPhone : Safari → Partager → « Sur l’écran d’accueil ». Chrome : menu → « Installer ». Fonctionne hors ligne.<br /><br />Raccourcis : ⌘K recherche · N capture · Tab enfant · Entrée frère · F2 renommer · Espace ouvrir · Suppr supprimer.</>}>
+          <span className="text-sm text-mute">PWA installable, hors ligne.</span>
         </Card>
       </div>
     </Page>
@@ -133,7 +132,7 @@ function CloudCard() {
     setBusy(false)
   }
   return (
-    <Card title="Synchronisation cloud" sub="Optionnel : sauvegarde automatique + même données sur iPhone et ordinateur. Tes données restent privées (accès réservé à ton compte).">
+    <Card title="Synchronisation cloud" info="Sauvegarde automatique et mêmes données sur iPhone et ordinateur. Accès réservé à ton compte.">
       <form className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]" onSubmit={(e) => { e.preventDefault(); go('in') }}>
         <input className="input" type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         <input className="input" type="password" placeholder="Mot de passe" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
@@ -145,10 +144,10 @@ function CloudCard() {
   )
 }
 
-function Card({ title, sub, children }: { title: string; sub?: ReactNode; children: ReactNode }) {
+function Card({ title, sub, info, children }: { title: string; sub?: ReactNode; info?: ReactNode; children: ReactNode }) {
   return (
     <section className="card p-5">
-      <h2 className="font-display text-[15px] font-semibold">{title}</h2>
+      <h2 className="flex items-center gap-2 font-display text-[15px] font-semibold">{title}{info && <Info text={info} />}</h2>
       {sub && <div className="mb-3 mt-0.5 text-[13px] text-mute">{sub}</div>}
       <div className={sub ? '' : 'mt-3'}>{children}</div>
     </section>
@@ -157,7 +156,7 @@ function Card({ title, sub, children }: { title: string; sub?: ReactNode; childr
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-line/50 py-3 last:border-0">
-      <div><div className="text-sm">{label}</div>{hint && <div className="text-[11.5px] text-mute">{hint}</div>}</div>
+      <div className="flex items-center gap-2 text-sm">{label}{hint && <Info text={hint} />}</div>
       {children}
     </div>
   )

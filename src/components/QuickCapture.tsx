@@ -3,7 +3,7 @@ import { useData, useUI } from '../lib/store'
 import { parseCapture } from '../lib/parser'
 import { fmtDay } from '../lib/dates'
 import { TYPE_META } from '../lib/meta'
-import { Icon, Modal } from './ui'
+import { Icon, Info, Modal } from './ui'
 import type { EntityType } from '../lib/types'
 
 const TYPES: EntityType[] = ['task', 'idea', 'note', 'project', 'objective', 'milestone']
@@ -125,7 +125,7 @@ export function QuickCapture() {
             </div>
           </div>
         ) : (
-          <div className="mt-2 text-[11.5px] text-mute">Astuces : « demain », « vendredi », « le 15 », « 14h », « pour Shakpot », « priorité haute », #tag</div>
+          <div className="mt-2"><Info text="Je comprends : « demain », « vendredi », « le 15 », « 14h », « pour Shakpot », « priorité haute », #tag. « Idée : … » change le type." /></div>
         )}
 
         <div className="mt-4 flex items-center gap-2">

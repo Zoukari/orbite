@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useData } from '../lib/store'
 import { TYPE_META } from '../lib/meta'
 import type { Entity } from '../lib/types'
@@ -171,5 +172,42 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
     <button onClick={() => onChange(!on)} className={`relative h-6 w-10 shrink-0 rounded-full transition ${on ? 'bg-accent' : 'bg-ink/15'}`} aria-pressed={on}>
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
     </button>
+  )
+}
+
+// Petit « i » : l'explication n'apparaît qu'à la demande (survol ou tap)
+export function Info({ text, className = '' }: { text: ReactNode; className?: string }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const show = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    setPos({ x: Math.min(Math.max(r.left + r.width / 2, 130), innerWidth - 130), y: r.bottom + 8 })
+  }
+  useEffect(() => {
+    if (!pos) return
+    const close = () => setPos(null)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('pointerdown', close)
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('pointerdown', close) }
+  }, [pos])
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Info"
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-mute/40 align-middle font-serif text-[9.5px] italic leading-none text-mute transition hover:border-accent hover:text-accent ${className}`}
+        onPointerEnter={(e) => e.pointerType === 'mouse' && show(e.currentTarget)}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setPos(null)}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); pos ? setPos(null) : show(e.currentTarget) }}
+      >
+        i
+      </button>
+      {pos && createPortal(
+        <span className="fade pointer-events-none fixed z-[90] w-60 -translate-x-1/2 rounded-xl border border-line bg-surface px-3 py-2 text-left text-[12px] font-normal normal-case not-italic leading-snug tracking-normal text-ink/85 shadow-xl" style={{ left: pos.x, top: pos.y }}>
+          {text}
+        </span>,
+        document.body
+      )}
+    </>
   )
 }

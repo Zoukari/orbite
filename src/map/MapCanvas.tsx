@@ -10,7 +10,7 @@ import { Starfield } from './Starfield'
 import { useData, useUI, descendants, progressOf, urgentCount, placeChild, childrenOf, displayTitle } from '../lib/store'
 import { layoutTree } from '../lib/layout'
 import { CREATABLE, EDGE_META, TYPE_META, childType } from '../lib/meta'
-import { Icon, Modal, useIsMobile } from '../components/ui'
+import { Icon, Info, Modal, useIsMobile } from '../components/ui'
 import type { EdgeKind, EntityType } from '../lib/types'
 
 const nodeTypes = { entity: EntityNode }
@@ -315,6 +315,7 @@ function Canvas() {
           <button className="icon-btn" title="Réorganiser (sélection ou tout)" onClick={relayout}><Icon name="layout" /></button>
           <button className="icon-btn" title="Recentrer" onClick={() => rf.fitView({ padding: 0.2, duration: 500 })}><Icon name="center" /></button>
           <button className={`icon-btn ${focusId ? 'text-accent' : ''}`} title="Mode Focus" onClick={() => useUI.getState().set({ focusId: focusId ? null : '__pick' })}><Icon name="focus" /></button>
+          {!mobile && <span className="flex h-9 w-7 items-center justify-center"><Info text={<>Double-clic sur le vide : créer. <b>Tab</b> : ajouter un enfant · <b>Entrée</b> : un frère · <b>F2</b> : renommer · clic droit : menu. Glisser une branche déplace ses enfants (<b>Alt</b> pour la déplacer seule).</>} /></span>}
           {!mobile && <button className={`icon-btn ${settings.rightPanel ? 'text-accent' : ''}`} title="Panneau Aujourd'hui" onClick={() => useData.getState().setSettings({ rightPanel: !settings.rightPanel })}><Icon name="sidebar" /></button>}
         </div>
       </div>
@@ -325,7 +326,6 @@ function Canvas() {
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-24 left-4 font-mono text-[10px] text-mute/60 md:bottom-4">{Math.round(vp.zoom * 100)}% · {nodes.length} éléments</div>
 
       {edgeMenu && <EdgeMenu {...edgeMenu} onClose={() => setEdgeMenu(null)} />}
       {addMenu && (
@@ -355,23 +355,32 @@ function EdgeMenu({ id, x, y, onClose }: { id: string; x: number; y: number; onC
   )
 }
 
+const MAIN_TYPES: EntityType[] = ['idea', 'task', 'project', 'objective', 'note', 'milestone']
+
 export function AddMenu({ x, y, onClose, onPick }: { x: number; y: number; onClose: () => void; onPick: (t: EntityType) => void }) {
   const mobile = useIsMobile()
+  const [all, setAll] = useState(false)
+  const types = all ? CREATABLE : MAIN_TYPES
   const list = (
-    <div className="grid grid-cols-3 gap-1 p-2">
-      {CREATABLE.map((t) => (
-        <button key={t} className="flex flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[11px] text-ink/80 hover:bg-ink/5" onClick={() => onPick(t)}>
-          <span className="text-base" style={{ color: TYPE_META[t].tint }}>{TYPE_META[t].glyph}</span>
+    <div className="p-1.5">
+      {types.map((t) => (
+        <button key={t} className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-ink/85 hover:bg-ink/5" onClick={() => onPick(t)}>
+          <span className="w-4 text-center" style={{ color: TYPE_META[t].tint }}>{TYPE_META[t].glyph}</span>
           {TYPE_META[t].label}
         </button>
       ))}
+      {!all && (
+        <button className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[12px] text-mute hover:bg-ink/5 hover:text-ink" onClick={() => setAll(true)}>
+          <span className="w-4 text-center">…</span>Autres types
+        </button>
+      )}
     </div>
   )
-  if (mobile) return <Modal open onClose={onClose} title="Ajouter sur la map">{list}</Modal>
+  if (mobile) return <Modal open onClose={onClose} title="Ajouter">{list}</Modal>
   return (
     <>
       <div className="fixed inset-0 z-40" onPointerDown={onClose} />
-      <div className="fade fixed z-50 w-[300px] rounded-2xl border border-line bg-surface shadow-2xl" style={{ left: Math.min(x, innerWidth - 310), top: Math.min(y, innerHeight - 330) }}>{list}</div>
+      <div className={`fade fixed z-50 w-[200px] rounded-2xl border border-line bg-surface shadow-2xl ${all ? 'max-h-[70vh] overflow-y-auto' : ''}`} style={{ left: Math.min(x, innerWidth - 210), top: Math.min(y, innerHeight - (all ? 560 : 300)) }}>{list}</div>
     </>
   )
 }
