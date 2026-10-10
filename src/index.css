@@ -20,15 +20,23 @@
   --star: transparent;
   color-scheme: light;
 }
-/* Fond clair : papier quadrillé + halos colorés, pour ne pas être fade */
+/* Fond clair : espace pastel — nébuleuses douces, poussière d'étoiles, orbites */
 :root:not(.dark) body {
   background-color: rgb(var(--bg));
   background-image:
-    radial-gradient(ellipse 60% 45% at 15% 0%, rgba(110, 130, 255, 0.10), transparent 70%),
-    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(242, 180, 90, 0.08), transparent 70%),
-    linear-gradient(rgba(79, 102, 230, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79, 102, 230, 0.06) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='1000' viewBox='0 0 1600 1000'%3E%3Cg fill='none' stroke='%236f7fd6' stroke-opacity='.10'%3E%3Cellipse cx='1350' cy='880' rx='620' ry='240' transform='rotate(-18 1350 880)'/%3E%3Cellipse cx='1350' cy='880' rx='430' ry='160' transform='rotate(-18 1350 880)'/%3E%3Cellipse cx='120' cy='60' rx='380' ry='130' transform='rotate(12 120 60)'/%3E%3C/g%3E%3Cg fill='%236f7fd6'%3E%3Ccircle cx='980' cy='690' r='3' fill-opacity='.35'/%3E%3Ccircle cx='445' cy='150' r='2.5' fill='%23d0a54e' fill-opacity='.45'/%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(1.2px 1.2px at 12% 18%, rgba(90,105,200,.55), transparent 60%),
+    radial-gradient(1px 1px at 72% 12%, rgba(90,105,200,.45), transparent 60%),
+    radial-gradient(1.4px 1.4px at 38% 64%, rgba(200,160,70,.55), transparent 60%),
+    radial-gradient(1px 1px at 86% 48%, rgba(90,105,200,.5), transparent 60%),
+    radial-gradient(1px 1px at 22% 86%, rgba(90,105,200,.45), transparent 60%),
+    radial-gradient(1.2px 1.2px at 58% 36%, rgba(90,105,200,.4), transparent 60%),
+    radial-gradient(1px 1px at 93% 82%, rgba(200,160,70,.5), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 10% 0%, rgba(120, 135, 255, 0.16), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 100% 100%, rgba(242, 180, 90, 0.11), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 85% 10%, rgba(111, 224, 184, 0.09), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 30% 100%, rgba(200, 140, 255, 0.08), transparent 70%);
+  background-size: cover, 240px 240px, 310px 310px, 370px 370px, 190px 190px, 430px 430px, 270px 270px, 350px 350px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
   background-attachment: fixed;
 }
 .dark {
@@ -95,9 +103,10 @@ button { -webkit-user-select: none; user-select: none; }
 :root:not(.dark) .space::before {
   content: ''; position: absolute; inset: -20%;
   background:
-    radial-gradient(ellipse 45% 35% at 25% 30%, rgba(110, 130, 255, 0.10), transparent 70%),
-    radial-gradient(ellipse 40% 35% at 80% 75%, rgba(242, 180, 90, 0.08), transparent 70%),
-    radial-gradient(ellipse 35% 30% at 70% 15%, rgba(111, 224, 184, 0.07), transparent 70%);
+    radial-gradient(ellipse 45% 35% at 25% 30%, rgba(110, 130, 255, 0.16), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 80% 75%, rgba(242, 180, 90, 0.12), transparent 70%),
+    radial-gradient(ellipse 35% 30% at 70% 15%, rgba(111, 224, 184, 0.10), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 15% 85%, rgba(200, 140, 255, 0.09), transparent 70%);
   animation: drift 90s ease-in-out infinite alternate;
 }
 .space.calm .stars { opacity: 0.4; }

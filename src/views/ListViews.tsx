@@ -33,10 +33,10 @@ export function TasksView() {
   const [mode, setMode] = useState<'projects' | 'dates'>(() => { try { return (localStorage.getItem('orbite.tasksMode') as any) || 'projects' } catch { return 'projects' } })
   const setM = (m: 'projects' | 'dates') => { setMode(m); try { localStorage.setItem('orbite.tasksMode', m) } catch {} }
   const [doneToo, setDoneToo] = useState(false)
-  const toggle = <Segmented value={mode} onChange={setM} options={[{ value: 'projects', label: 'Projets' }, { value: 'dates', label: 'Dates' }]} />
+  const toggle = <Segmented value={mode} onChange={setM} options={[{ value: 'projects', label: 'Arborescence' }, { value: 'dates', label: 'Par date' }]} />
   if (mode === 'projects')
     return (
-      <Page title="Tâches" actions={<>{toggle}<button className={`btn-ghost text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? 'Masquer faites' : 'Voir faites'}</button></>}>
+      <Page title="Projets" actions={<>{toggle}<button className={`btn-ghost text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? 'Masquer faites' : 'Voir faites'}</button></>}>
         <div className="mb-5"><TopThree /></div>
         <ProjectTree showDone={doneToo} />
       </Page>
@@ -71,7 +71,7 @@ function TasksByDate({ toggle }: { toggle: ReactNode }) {
   }
   return (
     <Page
-      title="Tâches"
+      title="Projets"
       actions={
         <>
           {toggle}

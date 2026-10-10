@@ -69,7 +69,7 @@ function useShortcuts() {
 const NAV: { id: ViewId; label: string; icon: string; drop?: string }[] = [
   { id: 'home', label: 'Accueil', icon: 'home' },
   { id: 'map', label: 'Map', icon: 'map' },
-  { id: 'tasks', label: 'Tâches', icon: 'tasks', drop: 'tasks' },
+  { id: 'tasks', label: 'Projets', icon: 'folder', drop: 'tasks' },
   { id: 'notes', label: 'Notes', icon: 'notes', drop: 'notes' }
 ]
 const MORE: { id: ViewId; label: string; icon: string }[] = [
@@ -196,7 +196,7 @@ function BottomNav({ onPlus }: { onPlus: () => void }) {
   const items: { id: ViewId; label: string; icon: string }[] = [
     { id: 'home', label: 'Accueil', icon: 'home' },
     { id: 'map', label: 'Map', icon: 'map' },
-    { id: 'tasks', label: 'Tâches', icon: 'tasks' },
+    { id: 'tasks', label: 'Projets', icon: 'folder' },
     { id: 'notes', label: 'Notes', icon: 'notes' }
   ]
   const more = !['home', 'map', 'tasks', 'notes'].includes(view)

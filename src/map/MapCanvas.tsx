@@ -308,8 +308,6 @@ function Canvas() {
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}
       >
-        {settings.theme === 'light' && <Background id="g1" variant={BackgroundVariant.Lines} gap={36} lineWidth={0.6} color="rgba(79,102,230,0.07)" />}
-        {settings.theme === 'light' && <Background id="g2" variant={BackgroundVariant.Lines} gap={144} lineWidth={0.9} color="rgba(79,102,230,0.11)" />}
         {!mobile && nodes.length > 12 && <MiniMap pannable zoomable maskColor="rgba(0,0,0,0.12)" nodeColor={(n) => { const e = ents[(n.data as any).id]; return e?.color || TYPE_META[e?.type || 'idea'].tint }} nodeBorderRadius={8} style={{ width: 150, height: 100 }} />}
       </ReactFlow>
 

@@ -4,7 +4,7 @@ import { fmtDay, recurrenceLabel, today } from '../lib/dates'
 import type { Entity } from '../lib/types'
 import { Icon } from './ui'
 
-function TaskRowImpl({ t, compact, showTop = true }: { t: Entity; compact?: boolean; showTop?: boolean }) {
+function TaskRowImpl({ t, compact, showTop = true, hideProject }: { t: Entity; compact?: boolean; showTop?: boolean; hideProject?: boolean }) {
   const prio = useData((s) => s.settings.priorities.find((p) => p.level === t.priority))
   const project = useData((s) => {
     const pid = t.projectIds?.[0] || (t.parentId && ['project', 'subproject'].includes(s.entities[t.parentId]?.type) ? t.parentId : undefined)
@@ -42,7 +42,7 @@ function TaskRowImpl({ t, compact, showTop = true }: { t: Entity; compact?: bool
             {t.deadline && <span className={t.deadline < today() && !t.done ? 'text-[#ff8a8a]' : ''}>⚑ {fmtDay(t.deadline)}</span>}
             {t.recurrence && <span>↻ {recurrenceLabel(t.recurrence)}</span>}
             {!!t.postponed && !t.done && <span className="text-[#f2b45a]">Reportée {t.postponed}×</span>}
-            {project && <span className="truncate" style={{ color: project.color }}>{project.icon || '▣'} {project.title}</span>}
+            {project && !hideProject && <span className="truncate" style={{ color: project.color }}>{project.icon || '▣'} {project.title}</span>}
             {t.checklist?.length ? <span>☑ {t.checklist.filter((c) => c.done).length}/{t.checklist.length}</span> : null}
           </div>
         )}
