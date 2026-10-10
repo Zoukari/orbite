@@ -39,6 +39,17 @@ function Main() {
       }
     })
     initSync()
+    // liens profonds (widgets iPhone) : /#notes, /#inbox, /#taches, /#capture
+    const deepLink = () => {
+      const h = location.hash.replace('#', '')
+      const views: Record<string, ViewId> = { notes: 'notes', inbox: 'inbox', taches: 'tasks', projets: 'tasks', map: 'map', accueil: 'home' }
+      if (views[h]) useUI.getState().go(views[h])
+      else if (h === 'capture') useUI.getState().set({ capture: { open: true } })
+      else return
+      history.replaceState(null, '', location.pathname)
+    }
+    deepLink()
+    window.addEventListener('hashchange', deepLink)
     // report automatique au changement de jour (app restée ouverte)
     const t = setInterval(() => useData.getState().rollover(), 5 * 60_000)
     return () => clearInterval(t)

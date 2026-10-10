@@ -1,18 +1,26 @@
 // ─────────────────────────────────────────────────────────────
-// Widget iPhone Orbite — à coller dans l'app gratuite « Scriptable »
-// Affiche : tes 3 priorités du jour + tâches du jour / en retard.
-// Lit tes données depuis Supabase (même compte que l'app).
-// 1er lancement DANS Scriptable : il te demande e-mail + mot de passe
+// Widgets iPhone Orbite — app gratuite « Scriptable »
+// Nomme ce script exactement : Orbite
+//
+// Un seul script, 3 widgets. Dans les réglages du widget (appui long
+// → Modifier le widget), champ « Parameter » :
+//   taches  → 3 priorités + tâches du jour   (par défaut)
+//   notes   → dernières notes
+//   inbox   → Inbox + capture rapide (un tap = noter une idée)
+//
+// 1er lancement DANS Scriptable : e-mail + mot de passe Orbite
 // (stockés dans le trousseau iOS, jamais dans ce fichier).
 // ─────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://ipduohsswlfkimfzramr.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_djFiZ7Q1jF6iAivXoDXDkw_x0wylLgW'
 const APP_URL = 'https://orbite.vercel.app' // ← remplace par l'URL de ton app Vercel
+const SCRIPT_NAME = 'Orbite'
 
 const KC_EMAIL = 'orbite.email'
 const KC_PASS = 'orbite.password'
 
+// ───────── Connexion / API ─────────
 async function askCredentials() {
   const a = new Alert()
   a.title = 'Connexion Orbite'
@@ -27,48 +35,74 @@ async function askCredentials() {
   return true
 }
 
+let session = null
 async function login() {
+  if (session) return session
   const req = new Request(`${SUPABASE_URL}/auth/v1/token?grant_type=password`)
   req.method = 'POST'
   req.headers = { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' }
   req.body = JSON.stringify({ email: Keychain.get(KC_EMAIL), password: Keychain.get(KC_PASS) })
   const res = await req.loadJSON()
   if (!res.access_token) throw new Error(res.error_description || res.msg || 'Connexion refusée')
-  return res.access_token
+  session = { token: res.access_token, userId: res.user.id }
+  return session
 }
 
-async function get(path, token) {
+async function get(path) {
+  const { token } = await login()
   const req = new Request(`${SUPABASE_URL}/rest/v1/${path}`)
   req.headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}` }
   return await req.loadJSON()
+}
+
+async function insertEntity(doc) {
+  const { token, userId } = await login()
+  const req = new Request(`${SUPABASE_URL}/rest/v1/lm_entities`)
+  req.method = 'POST'
+  req.headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' }
+  req.body = JSON.stringify({ id: doc.id, user_id: userId, type: doc.type, title: doc.title, map_id: null, parent_id: null, deleted: false, updated_at: doc.updatedAt, doc })
+  await req.load()
+  if (req.response.statusCode >= 300) throw new Error('Envoi refusé (' + req.response.statusCode + ')')
 }
 
 function todayStr() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+const plain = (md, n) => {
+  if (!md) return ''
+  const s = md.replace(/[#*_`>\[\]]/g, '').replace(/\(([^)]+)\)/g, '').replace(/\s+/g, ' ').trim()
+  return s.length > n ? s.slice(0, n) + '…' : s
+}
 
-async function loadData() {
-  const token = await login()
-  const rows = await get('lm_entities?select=doc&type=eq.task&deleted=eq.false', token)
-  const kv = await get('lm_kv?select=doc&key=eq.settings', token)
+// ───────── Données ─────────
+async function loadTasks() {
+  const rows = await get('lm_entities?select=doc&type=eq.task&deleted=eq.false')
+  const kv = await get('lm_kv?select=doc&key=eq.settings')
   const tasks = rows.map((r) => r.doc).filter((t) => !t.archived)
   const settings = (kv[0] && kv[0].doc) || {}
   const t = todayStr()
   const open = tasks.filter((x) => !x.done)
   const byId = Object.fromEntries(tasks.map((x) => [x.id, x]))
-  const topIds = settings.dailyTop && settings.dailyTop.date === t ? settings.dailyTop.ids : (settings.dailyTop?.ids || [])
-  const top = topIds.map((id) => byId[id]).filter(Boolean)
+  const top = ((settings.dailyTop && settings.dailyTop.ids) || []).map((id) => byId[id]).filter(Boolean)
   const today = open.filter((x) => x.date && x.date <= t).sort((a, b) => (b.priority || 0) - (a.priority || 0))
   const overdue = open.filter((x) => (x.date && x.date < t) || (x.postponed || 0) > 0)
-  const prios = settings.priorities || []
-  return { top, today, overdue, prios }
+  return { top, today, overdue, prios: settings.priorities || [] }
+}
+async function loadNotes() {
+  const rows = await get('lm_entities?select=doc&deleted=eq.false&type=in.(note,idea,text,checklist,document)&order=updated_at.desc&limit=20')
+  return rows.map((r) => r.doc).filter((n) => !n.archived).sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite))
+}
+async function loadInbox() {
+  const rows = await get('lm_entities?select=doc&deleted=eq.false&doc->>inbox=eq.true&order=updated_at.desc&limit=30')
+  return rows.map((r) => r.doc).filter((e) => !e.done && !e.archived)
 }
 
-const C = { bg: new Color('#05060a'), ink: new Color('#e8ecff'), mute: new Color('#868da6'), accent: new Color('#8ea2ff'), done: new Color('#6fe0b8'), warn: new Color('#ff8a8a') }
+// ───────── Style ─────────
+const C = { bg: new Color('#05060a'), ink: new Color('#e8ecff'), mute: new Color('#868da6'), accent: new Color('#8ea2ff'), done: new Color('#6fe0b8'), warn: new Color('#ff8a8a'), gold: new Color('#f2b45a') }
+const TYPE_GLYPH = { note: '≡', idea: '✧', text: 'T', checklist: '☑', document: '▤', task: '○', project: '▣', objective: '◉' }
 
 function addStars(w) {
-  // fond étoilé discret dessiné une fois
   const ctx = new DrawContext()
   ctx.size = new Size(400, 400)
   ctx.opaque = true
@@ -83,74 +117,147 @@ function addStars(w) {
   }
   w.backgroundImage = ctx.getImage()
 }
-
-function line(stack, text, opts = {}) {
+function txt(stack, text, opts = {}) {
   const t = stack.addText(text)
   t.font = opts.font || Font.systemFont(13)
   t.textColor = opts.color || C.ink
-  t.lineLimit = 1
+  t.lineLimit = opts.lines || 1
   return t
 }
+function header(w, title, right, rightColor) {
+  const h = w.addStack()
+  h.centerAlignContent()
+  txt(h, title, { font: Font.semiboldSystemFont(10), color: C.mute })
+  h.addSpacer()
+  if (right) txt(h, right, { font: Font.mediumSystemFont(10), color: rightColor || C.mute })
+  w.addSpacer(8)
+}
+function errorWidget(w) {
+  txt(w, 'Orbite', { font: Font.boldSystemFont(15) })
+  w.addSpacer(6)
+  txt(w, 'Ouvre Scriptable et lance le script pour te connecter.', { color: C.mute, font: Font.systemFont(11), lines: 3 })
+}
 
-async function build() {
+// ───────── Widgets ─────────
+async function tasksWidget(w, family) {
+  w.url = APP_URL + '/#taches'
+  const d = await loadTasks()
+  header(w, 'MES 3 PRIORITÉS', d.overdue.length ? `${d.overdue.length} en retard` : '', C.warn)
+  const list = d.top.length ? d.top : d.today.slice(0, 3)
+  if (!list.length) txt(w, 'Rien de prévu. Choisis tes priorités.', { color: C.mute, font: Font.systemFont(12), lines: 2 })
+  list.slice(0, 3).forEach((t, i) => {
+    const row = w.addStack()
+    row.centerAlignContent()
+    const p = d.prios.find((x) => x.level === t.priority)
+    txt(row, `0${i + 1}`, { font: Font.boldMonospacedSystemFont(family === 'small' ? 14 : 17), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
+    row.addSpacer(8)
+    txt(row, t.title, { font: Font.mediumSystemFont(family === 'small' ? 12 : 14), color: t.done ? C.mute : C.ink })
+    w.addSpacer(family === 'small' ? 4 : 6)
+  })
+  if (family === 'large') {
+    w.addSpacer(8)
+    txt(w, `AUJOURD’HUI · ${d.today.length}`, { font: Font.semiboldSystemFont(10), color: C.mute })
+    w.addSpacer(4)
+    d.today.filter((t) => !list.includes(t)).slice(0, 7).forEach((t) => { txt(w, `○  ${t.title}`); w.addSpacer(3) })
+  } else if (family === 'medium') {
+    w.addSpacer()
+    txt(w, `${d.today.length} tâche${d.today.length > 1 ? 's' : ''} aujourd’hui`, { font: Font.systemFont(11), color: C.mute })
+  }
+}
+
+async function notesWidget(w, family) {
+  w.url = APP_URL + '/#notes'
+  const notes = await loadNotes()
+  header(w, 'NOTES', `${notes.length}`)
+  if (!notes.length) { txt(w, 'Aucune note.', { color: C.mute, font: Font.systemFont(12) }); return }
+  const max = family === 'small' ? 2 : family === 'large' ? 6 : 3
+  const showBody = family !== 'small'
+  notes.slice(0, max).forEach((n) => {
+    const row = w.addStack()
+    row.layoutVertically()
+    const t = row.addStack()
+    t.centerAlignContent()
+    txt(t, (TYPE_GLYPH[n.type] || '≡') + ' ', { font: Font.systemFont(12), color: n.type === 'idea' ? C.gold : C.accent })
+    txt(t, n.title || 'Sans titre', { font: Font.semiboldSystemFont(family === 'small' ? 12 : 13) })
+    if (n.favorite) txt(t, ' ★', { font: Font.systemFont(10), color: C.gold })
+    if (showBody) {
+      const body = n.checklist && n.checklist.length
+        ? n.checklist.slice(0, 2).map((c) => (c.done ? '☑ ' : '☐ ') + c.text).join('  ')
+        : plain(n.description, family === 'large' ? 110 : 70)
+      if (body) txt(row, body, { font: Font.systemFont(11), color: C.mute, lines: family === 'large' ? 2 : 1 })
+    }
+    w.addSpacer(family === 'small' ? 4 : 7)
+  })
+}
+
+async function inboxWidget(w, family) {
+  // un tap = capture rapide sans ouvrir l'app (Scriptable demande le texte)
+  w.url = `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`
+  const items = await loadInbox()
+  header(w, 'INBOX', items.length ? `${items.length} à trier` : 'vide', items.length ? C.gold : C.mute)
+  const max = family === 'small' ? 3 : family === 'large' ? 9 : 4
+  items.slice(0, max).forEach((e) => {
+    txt(w, `${TYPE_GLYPH[e.type] || '•'}  ${e.title}`, { font: Font.systemFont(family === 'small' ? 12 : 13) })
+    w.addSpacer(4)
+  })
+  if (!items.length) txt(w, 'Tout est rangé.', { color: C.mute, font: Font.systemFont(12) })
+  w.addSpacer()
+  const cta = w.addStack()
+  cta.backgroundColor = new Color('#8ea2ff', 0.18)
+  cta.cornerRadius = 10
+  cta.setPadding(5, 10, 5, 10)
+  txt(cta, '＋ Capturer une idée', { font: Font.semiboldSystemFont(12), color: C.accent })
+}
+
+// ───────── Capture (lancée depuis le widget Inbox) ─────────
+async function capture() {
+  const a = new Alert()
+  a.title = 'Capture rapide'
+  a.message = 'Direction l’Inbox d’Orbite.'
+  a.addTextField('Appeler Jean-Pierre pour Shakpot…', '')
+  a.addAction('Tâche')
+  a.addAction('Idée')
+  a.addAction('Note')
+  a.addCancelAction('Annuler')
+  const choice = await a.present()
+  const title = a.textFieldValue(0).trim()
+  if (choice === -1 || !title) return
+  const type = ['task', 'idea', 'note'][choice]
+  const now = new Date().toISOString()
+  const doc = { id: UUID.string().toLowerCase(), type, title, inbox: true, status: type === 'task' ? 'todo' : undefined, createdAt: now, updatedAt: now, history: [{ at: now, action: 'created', detail: 'widget' }] }
+  await insertEntity(doc)
+  const n = new Notification()
+  n.title = 'Ajouté à l’Inbox'
+  n.body = title
+  await n.schedule()
+}
+
+// ───────── Entrée ─────────
+const mode = ((args.queryParameters && args.queryParameters.mode) || args.widgetParameter || 'taches').toString().trim().toLowerCase()
+
+if (config.runsInApp && (!Keychain.contains(KC_EMAIL) || !Keychain.contains(KC_PASS) || mode === 'login')) {
+  await askCredentials()
+}
+
+if (mode === 'capture') {
+  try { await capture() } catch (e) { const a = new Alert(); a.title = 'Erreur'; a.message = String(e.message || e); a.addAction('OK'); await a.present() }
+  Script.complete()
+} else {
   const w = new ListWidget()
   addStars(w)
   w.setPadding(14, 14, 12, 14)
-  w.url = APP_URL
+  w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000)
   const family = config.widgetFamily || 'medium'
-  let data
   try {
-    data = await loadData()
+    if (mode.startsWith('note')) await notesWidget(w, family)
+    else if (mode.startsWith('inbox')) await inboxWidget(w, family)
+    else await tasksWidget(w, family)
   } catch (e) {
-    line(w, 'Orbite', { font: Font.boldSystemFont(15) })
-    w.addSpacer(6)
-    line(w, 'Ouvre Scriptable et lance le script pour te connecter.', { color: C.mute, font: Font.systemFont(11) })
-    return w
-  }
-  const head = w.addStack()
-  head.centerAlignContent()
-  line(head, 'MES 3 PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute })
-  head.addSpacer()
-  if (data.overdue.length) line(head, `${data.overdue.length} en retard`, { font: Font.mediumSystemFont(10), color: C.warn })
-  w.addSpacer(8)
-
-  const list = data.top.length ? data.top : data.today.slice(0, 3)
-  const max = family === 'small' ? 3 : family === 'large' ? 3 : 3
-  if (!list.length) line(w, 'Rien de prévu. Choisis tes priorités.', { color: C.mute, font: Font.systemFont(12) })
-  list.slice(0, max).forEach((t, i) => {
-    const row = w.addStack()
-    row.centerAlignContent()
-    const p = data.prios.find((x) => x.level === t.priority)
-    line(row, `0${i + 1}`, { font: Font.boldMonospacedSystemFont(family === 'small' ? 14 : 17), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
-    row.addSpacer(8)
-    line(row, t.title, { font: Font.mediumSystemFont(family === 'small' ? 12 : 14), color: t.done ? C.mute : C.ink })
-    w.addSpacer(family === 'small' ? 4 : 6)
-  })
-
-  if (family === 'large') {
-    w.addSpacer(8)
-    line(w, `AUJOURD’HUI · ${data.today.length}`, { font: Font.semiboldSystemFont(10), color: C.mute })
-    w.addSpacer(4)
-    data.today.filter((t) => !list.includes(t)).slice(0, 7).forEach((t) => {
-      line(w, `○  ${t.title}`, { font: Font.systemFont(13) })
-      w.addSpacer(3)
-    })
-  } else if (family === 'medium') {
-    w.addSpacer()
-    line(w, `${data.today.length} tâche${data.today.length > 1 ? 's' : ''} aujourd’hui`, { font: Font.systemFont(11), color: C.mute })
+    errorWidget(w)
   }
   w.addSpacer()
-  w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000)
-  return w
+  if (config.runsInWidget) Script.setWidget(w)
+  else if (mode.startsWith('inbox')) await w.presentMedium()
+  else await w.presentLarge()
+  Script.complete()
 }
-
-if (config.runsInApp && (!Keychain.contains(KC_EMAIL) || !Keychain.contains(KC_PASS))) {
-  await askCredentials()
-} else if (config.runsInApp && args.queryParameters.reset) {
-  await askCredentials()
-}
-
-const widget = await build()
-if (config.runsInWidget) Script.setWidget(widget)
-else await widget.presentMedium()
-Script.complete()
