@@ -87,7 +87,7 @@ export function SettingsView() {
         </Card>
 
         <Card title="Installer l’app" info={<>iPhone : Safari → Partager → « Sur l’écran d’accueil ». Chrome : menu → « Installer ». Fonctionne hors ligne.<br /><br />Raccourcis : ⌘K recherche · N capture · Tab enfant · Entrée frère · F2 renommer · Espace ouvrir · Suppr supprimer.</>}>
-          <span className="text-sm text-mute">PWA installable, hors ligne.</span>
+          <span className="text-sm text-mute">Version du {__BUILD__} (UTC)</span>
         </Card>
       </div>
     </Page>
