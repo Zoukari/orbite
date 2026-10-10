@@ -9,10 +9,12 @@ import type { Entity } from '../lib/types'
 // Réutilisée dans la page « Projets » et dans la sidebar droite de la Map.
 
 interface Group { obj: Entity | null; items: Entity[] } // obj null = « Sans objectif »
-interface ProjectBlock { project: Entity; groups: Group[] }
-interface Section { cat: Entity | null; projects: ProjectBlock[]; groups: Group[] }
+// Un conteneur = projet ou catégorie. Ils peuvent s'imbriquer à l'infini
+// (ex. Personnel → Canada → Logement) : on les affiche les uns dans les autres.
+interface Card { e: Entity; cards: Card[]; groups: Group[] }
+interface Section { cat: Entity | null; cards: Card[]; groups: Group[] }
 
-const isProject = (e: Entity) => e.type === 'project'
+const isContainer = (e: Entity) => e.type === 'project' || e.type === 'category'
 const isGroup = (e: Entity) => e.type === 'objective' || e.type === 'subproject'
 const isItem = (e: Entity) => e.type === 'task' || e.type === 'milestone'
 
@@ -42,6 +44,7 @@ export function usePlan(showDone: boolean) {
     const all = Object.values(ents).filter((e) => !e.archived)
     const keep = (t: Entity) => showDone || !t.done
     const claimed = new Set<string>()
+    const depth = (e: Entity) => ancestors(ents, e.id).length
     const sortItems = (a: Entity, b: Entity) => Number(!!a.done) - Number(!!b.done) || Number(a.type === 'milestone') - Number(b.type === 'milestone') || (a.date || '9').localeCompare(b.date || '9') || (b.priority ?? 0) - (a.priority ?? 0)
     const take = (list: Entity[]) => {
       const out: Entity[] = []
@@ -49,56 +52,50 @@ export function usePlan(showDone: boolean) {
       return out.sort(sortItems)
     }
 
-    // objectifs : les plus profonds d'abord, chacun garde ses tâches
-    const groupEnts = all.filter(isGroup).map((g) => ({ g, d: ancestors(ents, g.id).length })).sort((a, b) => b.d - a.d)
-    const groups = new Map<string, Group>()
-    for (const { g } of groupEnts) {
-      const items = take(itemsOf(ents, g.id).filter(isItem))
-      // un sous-projet qui ne sert que de dossier (il contient des objectifs) n'est pas affiché vide
-      if (g.type === 'subproject' && !items.length && all.some((x) => isGroup(x) && x.parentId === g.id)) continue
-      groups.set(g.id, { obj: g, items })
-    }
-
+    // 1) conteneurs : sections (catégories racines) et cartes (projets / sous-catégories)
     const sections = new Map<string, Section>()
-    const other: Section = { cat: null, projects: [], groups: [] }
-    const sectionOf = (e: Entity) => {
-      const cat = nearest(ents, e, (x) => x.type === 'category')
-      if (!cat) return other
-      if (!sections.has(cat.id)) sections.set(cat.id, { cat, projects: [], groups: [] })
-      return sections.get(cat.id)!
+    const other: Section = { cat: null, cards: [], groups: [] }
+    const cards = new Map<string, Card>()
+    const containers = all.filter(isContainer).sort((x, y) => depth(x) - depth(y))
+    for (const c of containers) {
+      const parent = nearest(ents, c, isContainer, c.type === 'project')
+      if (!parent && c.type === 'category') { sections.set(c.id, { cat: c, cards: [], groups: [] }); continue }
+      const card: Card = { e: c, cards: [], groups: [] }
+      cards.set(c.id, card)
+      if (parent && cards.has(parent.id)) cards.get(parent.id)!.cards.push(card)
+      else if (parent && sections.has(parent.id)) sections.get(parent.id)!.cards.push(card)
+      else other.cards.push(card)
+    }
+    const holderOf = (e: Entity): { groups: Group[] } => {
+      const c = nearest(ents, e, isContainer)
+      if (c && cards.has(c.id)) return cards.get(c.id)!
+      if (c && sections.has(c.id)) return sections.get(c.id)!
+      return other
     }
 
-    const projects = new Map<string, ProjectBlock>()
-    for (const p of all.filter(isProject)) {
-      const b: ProjectBlock = { project: p, groups: [] }
-      projects.set(p.id, b)
-      sectionOf(p).projects.push(b)
+    // 2) objectifs : les plus profonds réclament leurs tâches en premier (pas de doublon)
+    for (const g of all.filter(isGroup).sort((x, y) => depth(y) - depth(x))) {
+      const items = take(itemsOf(ents, g.id).filter(isItem))
+      if (g.type === 'subproject' && !items.length && all.some((x) => isGroup(x) && x.parentId === g.id)) continue
+      holderOf(g).groups.push({ obj: g, items })
     }
-    const posY = (g: Group) => g.obj?.y ?? 0
-    for (const g of groups.values()) {
-      const proj = nearest(ents, g.obj!, isProject)
-      if (proj && projects.has(proj.id)) projects.get(proj.id)!.groups.push(g)
-      else sectionOf(g.obj!).groups.push(g)
+    // 3) tâches restantes d'un conteneur → « Sans objectif » dans ce conteneur
+    for (const c of [...containers].sort((x, y) => depth(y) - depth(x))) {
+      const rest = take(itemsOf(ents, c.id).filter(isItem))
+      if (!rest.length) continue
+      const h = cards.get(c.id) ?? sections.get(c.id)
+      h?.groups.push({ obj: null, items: rest })
     }
-    // tâches du projet hors objectif → section « Sans objectif » DANS le projet
-    for (const b of projects.values()) {
-      b.groups.sort((a, c) => posY(a) - posY(c))
-      const rest = take(itemsOf(ents, b.project.id).filter(isItem))
-      if (rest.length) b.groups.push({ obj: null, items: rest })
-    }
-    // le reste : rattaché à une catégorie ou « À classer »
-    const loose = all.filter((t) => isItem(t) && !claimed.has(t.id) && keep(t))
-    const byCat = new Map<Section, Entity[]>()
-    for (const t of loose) {
-      const s = sectionOf(t)
-      byCat.set(s, [...(byCat.get(s) || []), t])
-    }
-    for (const [s, items] of byCat) s.groups.push({ obj: null, items: items.sort(sortItems) })
+    // 4) le reste : « À classer »
+    const loose = take(all.filter(isItem))
+    if (loose.length) other.groups.push({ obj: null, items: loose })
 
     const order = ['doing', 'blocked', 'waiting', 'todo', 'backlog', 'done']
+    const rank = (c: Card) => (c.e.type === 'category' ? -1 : order.indexOf(c.e.status || 'todo'))
+    const sortCards = (list: Card[]) => { list.sort((a, b) => rank(a) - rank(b) || (a.e.y ?? 0) - (b.e.y ?? 0)); list.forEach((c) => { sortCards(c.cards); c.groups.sort((a, b) => Number(!a.obj) - Number(!b.obj) || (a.obj?.y ?? 0) - (b.obj?.y ?? 0)) }) }
     const list = [...sections.values()].sort((a, b) => (a.cat?.y ?? 0) - (b.cat?.y ?? 0))
-    for (const s of [...list, other]) s.projects.sort((a, b) => order.indexOf(a.project.status || 'todo') - order.indexOf(b.project.status || 'todo'))
-    return [...list, other].filter((s) => s.projects.length || s.groups.length)
+    for (const s of [...list, other]) sortCards(s.cards)
+    return [...list, other].filter((s) => s.cards.length || s.groups.length)
   }, [ents, showDone])
 }
 
@@ -128,18 +125,21 @@ function SectionView({ s, compact }: { s: Section; compact?: boolean }) {
   const cat = s.cat
   return (
     <section>
-      <button onClick={toggle} className="mb-2 flex w-full items-center gap-2 px-1 text-left">
-        <Icon name="chevron" className={`h-3 w-3 text-mute transition ${open ? 'rotate-90' : ''}`} />
-        {cat && <span style={{ color: cat.color }}>{cat.icon || '◇'}</span>}
-        <span className="font-display text-[12px] font-semibold uppercase tracking-[0.14em] text-mute">{cat ? cat.title : 'À classer'}</span>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <button onClick={toggle} className="flex min-w-0 items-center gap-2 text-left">
+          <Icon name="chevron" className={`h-3 w-3 text-mute transition ${open ? 'rotate-90' : ''}`} />
+          {cat && <span style={{ color: cat.color }}>{cat.icon || '◇'}</span>}
+          <span className="truncate font-display text-[12px] font-semibold uppercase tracking-[0.14em] text-mute">{cat ? cat.title : 'À classer'}</span>
+        </button>
         <span className="h-px flex-1 bg-line/60" />
-      </button>
+        {cat && <AddProject parent={cat} />}
+      </div>
       {open && (
         <div className="space-y-2.5">
-          {s.projects.map((b) => <ProjectCard key={b.project.id} b={b} compact={compact} />)}
+          {s.cards.map((c) => <ContainerCard key={c.e.id} c={c} compact={compact} />)}
           {s.groups.map((g, i) => (
             <div key={g.obj?.id ?? 'loose' + i} className="card px-1.5 py-1.5">
-              <GroupView g={g} project={null} compact={compact} />
+              <GroupView g={g} project={cat} compact={compact} />
             </div>
           ))}
         </div>
@@ -148,42 +148,58 @@ function SectionView({ s, compact }: { s: Section; compact?: boolean }) {
   )
 }
 
-function ProjectCard({ b, compact }: { b: ProjectBlock; compact?: boolean }) {
-  const ents = useData((s) => s.entities)
-  const p = b.project
-  const [open, toggle] = useOpen(p.id)
-  const [adding, setAdding] = useState(false)
+function AddProject({ parent }: { parent: Entity }) {
+  const [on, setOn] = useState(false)
   const [txt, setTxt] = useState('')
-  const color = p.color || '#7aa7ff'
-  const prog = progressOf(ents, p)
-  const left = b.groups.reduce((n, g) => n + g.items.filter((t) => !t.done && t.type === 'task').length, 0)
-  const addObjective = (e: React.FormEvent) => {
+  if (!on) return <button className="text-[11px] text-mute hover:text-ink" onClick={() => setOn(true)}>+ Projet</button>
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (!txt.trim()) return; const s = useData.getState(); const pos = parent.mapId ? placeChild(s.entities, parent) : {}; s.create({ type: 'project', title: txt.trim(), status: 'todo', parentId: parent.id, mapId: parent.mapId ?? null, ...pos }); setTxt(''); setOn(false) }}>
+      <input autoFocus className="w-36 rounded-lg border border-line bg-surface px-2 py-0.5 text-[12px] outline-none" placeholder="Nom du projet" value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setOn(false)} onKeyDown={(e) => e.key === 'Escape' && setOn(false)} />
+    </form>
+  )
+}
+
+function ContainerCard({ c, compact, nested }: { c: Card; compact?: boolean; nested?: boolean }) {
+  const ents = useData((s) => s.entities)
+  const p = c.e
+  const [open, toggle] = useOpen(p.id)
+  const [adding, setAdding] = useState<null | 'objective' | 'project'>(null)
+  const [txt, setTxt] = useState('')
+  const color = p.color || (p.type === 'category' ? '#b9c3e6' : '#7aa7ff')
+  const prog = p.type === 'project' ? progressOf(ents, p) : null
+  const count = (x: Card): number => x.groups.reduce((n, g) => n + g.items.filter((t) => !t.done && t.type === 'task').length, 0) + x.cards.reduce((n, k) => n + count(k), 0)
+  const left = count(c)
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!txt.trim()) return
+    if (!txt.trim() || !adding) return
     const s = useData.getState()
     const pos = p.mapId ? placeChild(s.entities, p) : {}
-    s.create({ type: 'objective', title: txt.trim(), parentId: p.id, mapId: p.mapId ?? null, ...pos })
+    s.create({ type: adding, title: txt.trim(), parentId: p.id, mapId: p.mapId ?? null, status: adding === 'project' ? 'todo' : undefined, ...pos })
     setTxt('')
   }
   return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center gap-2.5 px-3.5 py-3" style={{ background: `linear-gradient(90deg, ${color}14, transparent 60%)` }}>
+    <div className={nested ? 'overflow-hidden rounded-xl border border-line/60 bg-surface/60' : 'card overflow-hidden'}>
+      <div className={`flex items-center gap-2.5 px-3.5 ${nested ? 'py-2.5' : 'py-3'}`} style={{ background: `linear-gradient(90deg, ${color}14, transparent 60%)` }}>
         <button onClick={toggle} className="text-mute"><Icon name="chevron" className={`h-3.5 w-3.5 transition ${open ? 'rotate-90' : ''}`} /></button>
-        <span className="text-[15px]" style={{ color }}>{p.icon || '▣'}</span>
-        <button className="min-w-0 flex-1 truncate text-left font-display text-[15px] font-semibold" onClick={() => useUI.getState().open(p.id)}>{p.title}</button>
+        <span className={nested ? 'text-[13px]' : 'text-[15px]'} style={{ color }}>{p.icon || (p.type === 'category' ? '◇' : '▣')}</span>
+        <button className={`min-w-0 flex-1 truncate text-left font-display font-semibold ${nested ? 'text-[14px]' : 'text-[15px]'}`} onClick={() => useUI.getState().open(p.id)}>{p.title}</button>
         {prog != null && !compact && <span className="w-24"><ProgressBar value={prog} color={color} slim /></span>}
         <span className="rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[10.5px] text-mute">{left}</span>
       </div>
       {open && (
         <div className="space-y-1.5 px-2 pb-2">
-          {b.groups.map((g) => <GroupView key={g.obj?.id ?? 'none'} g={g} project={p} compact={compact} nested />)}
+          {c.cards.map((k) => <ContainerCard key={k.e.id} c={k} compact={compact} nested />)}
+          {c.groups.map((g) => <GroupView key={g.obj?.id ?? 'none'} g={g} project={p} compact={compact} nested />)}
           {adding ? (
-            <form onSubmit={addObjective} className="flex items-center gap-2 rounded-xl border border-dashed border-line/70 px-3 py-2">
-              <span className="text-[12px] text-[#6fe0b8]">◉</span>
-              <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder="Nouvel objectif" value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setAdding(false)} onKeyDown={(e) => e.key === 'Escape' && setAdding(false)} />
+            <form onSubmit={submit} className="flex items-center gap-2 rounded-xl border border-dashed border-line/70 px-3 py-2">
+              <span className="text-[12px]" style={{ color: adding === 'objective' ? '#6fe0b8' : '#7aa7ff' }}>{adding === 'objective' ? '◉' : '▣'}</span>
+              <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder={adding === 'objective' ? 'Nouvel objectif' : 'Nouveau sous-projet'} value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setAdding(null)} onKeyDown={(e) => e.key === 'Escape' && setAdding(null)} />
             </form>
           ) : (
-            <button className="w-full rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-left text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding(true)}>+ Objectif</button>
+            <div className="flex gap-1.5">
+              <button className="flex-1 rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-left text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('objective')}>+ Objectif</button>
+              <button className="rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('project')}>+ Sous-projet</button>
+            </div>
           )}
         </div>
       )}

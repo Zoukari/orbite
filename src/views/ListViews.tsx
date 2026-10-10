@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { useData, useUI, progressOf, relationCounts, displayTitle, pathLabel, resolve } from '../lib/store'
 import { HORIZONS, horizonOf, fmtDay, today } from '../lib/dates'
 import { parseCapture } from '../lib/parser'
@@ -8,6 +8,7 @@ import { TYPE_META } from '../lib/meta'
 import { TaskRow } from '../components/TaskRow'
 import { ProjectTree } from '../components/ProjectTree'
 import { TopThree } from '../components/Priorities'
+const NotesBoard = lazy(() => import('./NotesBoard').then((m) => ({ default: m.NotesBoard })))
 import { Empty, Icon, Info, ProgressBar, StatusPill, TypeGlyph, Segmented } from '../components/ui'
 import type { Entity, EntityType } from '../lib/types'
 
@@ -166,8 +167,23 @@ export function NotesView() {
     const n = useData.getState().create({ type: t, title, checklist: t === 'checklist' ? [] : undefined })
     if (!title) useUI.getState().open(n.id)
   }
+  const [layout, setLayoutState] = useState<'board' | 'list'>(() => { try { return (localStorage.getItem('orbite.notesLayout') as any) || 'board' } catch { return 'board' } })
+  const setLayout = (v: 'board' | 'list') => { setLayoutState(v); try { localStorage.setItem('orbite.notesLayout', v) } catch {} }
+  const switcher = <Segmented value={layout} onChange={setLayout} options={[{ value: 'board', label: 'Tableau' }, { value: 'list', label: 'Liste' }]} />
+  if (layout === 'board')
+    return (
+      <div className="relative h-full" data-dropzone="notes">
+        <Suspense fallback={null}><NotesBoard notes={notes} /></Suspense>
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 p-4 pr-16 md:pr-4">
+          <h1 className="pointer-events-auto font-display text-2xl font-semibold tracking-tight">Notes</h1>
+          <div className="pointer-events-auto glass rounded-xl">{switcher}</div>
+          <div className="flex-1" />
+          <input className="input pointer-events-auto !w-36 !py-1.5 text-xs md:!w-48" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+      </div>
+    )
   return (
-    <Page title="Notes" actions={<input className="input !w-40 !py-1.5 text-xs" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />}>
+    <Page title="Notes" actions={<>{switcher}<input className="input !w-40 !py-1.5 text-xs" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} /></>}>
       <form className="card mb-5 flex items-center gap-2 px-3 py-2" data-dropzone="notes" onSubmit={(e) => { e.preventDefault(); if (!txt.trim()) return; make('note', txt.trim()); setTxt('') }}>
         <Icon name="plus" className="h-4 w-4 text-mute" />
         <input className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-mute/70" placeholder="Note rapide…" value={txt} onChange={(e) => setTxt(e.target.value)} />
