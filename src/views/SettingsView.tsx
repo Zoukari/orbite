@@ -4,7 +4,8 @@ import { exportAll, exportTasksCsv, importBackup } from '../lib/backup'
 import { removeDemo } from '../lib/demo'
 import { fmtRelative } from '../lib/dates'
 import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, PALETTE } from '../lib/meta'
-import { supabase, useSync, signIn, signUp, signOut, syncNow } from '../lib/sync'
+import { supabase, useSync, signOut, syncNow, setPin } from '../lib/sync'
+import { PinLogin, PinInput } from '../components/PinLogin'
 import { Page } from './ListViews'
 import { Segmented, Toggle, Icon, Info } from '../components/ui'
 
@@ -97,10 +98,6 @@ export function SettingsView() {
 function CloudCard() {
   const { session, status, error } = useSync()
   const lastSync = useData((s) => s.settings.lastSyncAt)
-  const [email, setEmail] = useState('')
-  const [pw, setPw] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
   if (!supabase)
     return (
       <Card title="Synchronisation cloud" sub="Désactivée">
@@ -118,28 +115,30 @@ function CloudCard() {
           <div className="flex-1" />
           <button className="btn-soft text-xs" onClick={() => syncNow()}>Synchroniser</button>
           <button className="btn-ghost text-xs" onClick={() => signOut()}>Déconnexion</button>
+          <ChangePin />
         </div>
         {error && <div className="mt-2 rounded-xl bg-[#ff7a7a]/10 px-3 py-2 text-xs text-[#ff7a7a]">{error}{/relation .* does not exist|lm_/.test(error) ? ' — as-tu bien exécuté le SQL dans Supabase ?' : ''}</div>}
       </Card>
     )
-  const go = async (mode: 'in' | 'up') => {
-    setBusy(true); setMsg(null)
-    try {
-      if (mode === 'in') await signIn(email, pw)
-      else { const ok = await signUp(email, pw); setMsg(ok ? 'Compte créé et connecté.' : 'Compte créé. Confirme l’e-mail reçu, puis connecte-toi ici.') }
-    } catch (e: any) { setMsg(e.message === 'Invalid login credentials' ? 'E-mail ou mot de passe incorrect.' : e.message) }
-    setBusy(false)
-  }
   return (
     <Card title="Synchronisation cloud" info="Sauvegarde automatique et mêmes données sur iPhone et ordinateur. Accès réservé à ton compte.">
-      <form className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]" onSubmit={(e) => { e.preventDefault(); go('in') }}>
-        <input className="input" type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <input className="input" type="password" placeholder="Mot de passe" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
-        <button className="btn-primary text-xs" disabled={busy}>Connexion</button>
-        <button type="button" className="btn-soft text-xs" disabled={busy || pw.length < 6} onClick={() => go('up')}>Créer le compte</button>
-      </form>
-      {msg && <div className="mt-2 text-xs text-mute">{msg}</div>}
+      <div className="mx-auto max-w-xs"><PinLogin /></div>
     </Card>
+  )
+}
+
+function ChangePin() {
+  const [pin, setP] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  if (!open) return <button className="btn-soft text-xs" onClick={() => setOpen(true)}>Définir mon PIN</button>
+  return (
+    <div className="mt-3 w-full space-y-2 rounded-2xl border border-line/60 p-3">
+      <div className="text-center text-[13px] font-medium">Nouveau PIN (6 chiffres)</div>
+      <PinInput value={pin} onChange={setP} autoFocus />
+      <button className="btn-primary w-full" disabled={pin.length !== 6} onClick={async () => { try { await setPin(pin); setMsg('PIN enregistré. Utilise-le pour te connecter (et dans le widget).'); setP('') } catch (e: any) { setMsg(e.message) } }}>Enregistrer</button>
+      {msg && <div className="text-center text-xs text-mute">{msg}</div>}
+    </div>
   )
 }
 

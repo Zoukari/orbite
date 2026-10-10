@@ -144,8 +144,10 @@ export async function initSync() {
   syncStarted = true
   const { data } = await supabase.auth.getSession()
   useSync.getState().set({ session: data.session })
+  if (data.session?.user.email) rememberEmail(data.session.user.email)
   supabase.auth.onAuthStateChange((_evt, session) => {
     useSync.getState().set({ session })
+    if (session?.user.email) rememberEmail(session.user.email)
     if (session) scheduleSync(200)
   })
   onLocalChange(() => scheduleSync())
@@ -170,4 +172,27 @@ export async function signUp(email: string, password: string) {
 }
 export async function signOut() {
   await supabase?.auth.signOut()
+}
+
+// ───────── PIN ─────────
+// Le PIN (6 chiffres) sert de mot de passe Supabase, avec un préfixe fixe
+// (Supabase exige ≥ 6 caractères). L'e-mail est mémorisé sur l'appareil.
+export const pinPassword = (pin: string) => `orbite-pin-${pin}`
+export const OWNER_EMAIL = (import.meta.env.VITE_OWNER_EMAIL as string | undefined) || ''
+export const rememberedEmail = () => { try { return localStorage.getItem('orbite.email') || OWNER_EMAIL } catch { return OWNER_EMAIL } }
+export const rememberEmail = (e: string) => { try { localStorage.setItem('orbite.email', e) } catch {} }
+
+export async function signInPin(email: string, pin: string) {
+  await signIn(email, pinPassword(pin))
+  rememberEmail(email)
+}
+export async function signUpPin(email: string, pin: string) {
+  const ok = await signUp(email, pinPassword(pin))
+  rememberEmail(email)
+  return ok
+}
+export async function setPin(pin: string) {
+  if (!supabase) throw new Error('Supabase non configuré')
+  const { error } = await supabase.auth.updateUser({ password: pinPassword(pin) })
+  if (error) throw error
 }

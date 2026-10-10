@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useData, useUI } from './lib/store'
-import { initSync, useSync, signIn, syncNow } from './lib/sync'
+import { initSync, useSync } from './lib/sync'
+import { PinLogin } from './components/PinLogin'
 import { TYPE_META } from './lib/meta'
 import { Icon, Modal, useIsMobile } from './components/ui'
 import { DetailPanel } from './components/DetailPanel'
@@ -273,26 +274,5 @@ function SyncLoginHint() {
 }
 
 function LoginInline({ onDone }: { onDone: () => void }) {
-  const [email, setEmail] = useState('')
-  const [pw, setPw] = useState('')
-  const [err, setErr] = useState<string | null>(null)
-  return (
-    <form className="space-y-2 px-5 pb-5" onSubmit={async (e) => {
-      e.preventDefault()
-      setErr(null)
-      try {
-        await signIn(email, pw)
-        await syncNow()
-        const s = useData.getState()
-        const m = Object.values(s.entities).find((x) => x.type === 'map')
-        s.setSettings({ onboarded: true, activeMapId: s.settings.activeMapId || m?.id })
-        onDone()
-      } catch (er: any) { setErr(er.message) }
-    }}>
-      <input className="input" type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
-      <input className="input" type="password" placeholder="Mot de passe" value={pw} onChange={(e) => setPw(e.target.value)} />
-      {err && <div className="text-xs text-[#ff7a7a]">{err}</div>}
-      <button className="btn-primary w-full">Se connecter et synchroniser</button>
-    </form>
-  )
+  return <div className="px-5 pb-5"><PinLogin onDone={onDone} allowCreate={false} /></div>
 }

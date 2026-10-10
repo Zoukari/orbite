@@ -25,14 +25,16 @@ const KC_PASS = 'orbite.password'
 async function askCredentials() {
   const a = new Alert()
   a.title = 'Connexion Orbite'
-  a.message = 'Même e-mail et mot de passe que dans l’app (Réglages → Synchronisation).'
+  a.message = 'Ton e-mail et ton PIN Orbite (6 chiffres).'
   a.addTextField('E-mail', Keychain.contains(KC_EMAIL) ? Keychain.get(KC_EMAIL) : '')
-  a.addSecureTextField('Mot de passe', '')
+  a.addSecureTextField('PIN', '')
   a.addAction('Enregistrer')
   a.addCancelAction('Annuler')
   if ((await a.present()) === -1) return false
   Keychain.set(KC_EMAIL, a.textFieldValue(0).trim())
-  Keychain.set(KC_PASS, a.textFieldValue(1))
+  const pin = a.textFieldValue(1).trim()
+  // un PIN à 6 chiffres est converti comme dans l'app ; sinon on garde le texte (ancien mot de passe)
+  Keychain.set(KC_PASS, /^\d{6}$/.test(pin) ? `orbite-pin-${pin}` : pin)
   return true
 }
 
@@ -231,23 +233,24 @@ async function allWidget(w, family) {
   }
   if (family === 'medium') {
     const cols = w.addStack()
+    cols.topAlignContent()
     const left = cols.addStack(); left.layoutVertically()
-    cols.addSpacer(12)
-    const right = cols.addStack(); right.layoutVertically(); right.size = new Size(120, 0)
-    txt(left, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute }); left.addSpacer(6)
-    list.slice(0, 3).forEach((t, i) => prioRow(left, t, i, 13))
-    if (!list.length) txt(left, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
+    cols.addSpacer(14)
+    const right = cols.addStack(); right.layoutVertically(); right.size = new Size(128, 0)
+    txt(left, 'PRIORITÉS', { font: Font.semiboldSystemFont(11), color: C.mute }); left.addSpacer(7)
+    list.slice(0, 3).forEach((t, i) => prioRow(left, t, i, 16))
+    if (!list.length) txt(left, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(14) })
     // colonne droite : inbox + dernière note
     const ib = right.addStack(); ib.url = `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`
-    txt(ib, `INBOX · ${inbox.length}`, { font: Font.semiboldSystemFont(10), color: inbox.length ? C.gold : C.mute })
-    right.addSpacer(3)
-    if (inbox[0]) txt(right, inbox[0].title, { font: Font.systemFont(11), lines: 2 })
+    txt(ib, `INBOX · ${inbox.length}`, { font: Font.semiboldSystemFont(11), color: inbox.length ? C.gold : C.mute })
+    right.addSpacer(4)
+    inbox.slice(0, 2).forEach((e) => { txt(right, e.title, { font: Font.mediumSystemFont(14), lines: 2 }); right.addSpacer(3) })
     right.addSpacer(8)
-    txt(right, 'NOTE', { font: Font.semiboldSystemFont(10), color: C.mute }); right.addSpacer(3)
-    if (notes[0]) txt(right, notes[0].title || 'Sans titre', { font: Font.systemFont(11), lines: 2 })
+    const nh = right.addStack(); nh.url = APP_URL + '/#notes'
+    txt(nh, 'NOTE', { font: Font.semiboldSystemFont(11), color: C.mute }); right.addSpacer(4)
+    if (notes[0]) txt(right, notes[0].title || 'Sans titre', { font: Font.mediumSystemFont(14), lines: 2 })
     w.addSpacer()
-    const foot = w.addStack()
-    txt(foot, `${d.today.length} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length} en retard` : ''}`, { font: Font.systemFont(10), color: d.overdue.length ? C.warn : C.mute })
+    txt(w, `${d.today.length} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length} en retard` : ''}`, { font: Font.mediumSystemFont(13), color: d.overdue.length ? C.warn : C.mute })
     return
   }
   // large : 3 sections
@@ -308,7 +311,7 @@ if (mode === 'capture') {
 } else {
   const w = new ListWidget()
   addStars(w)
-  w.setPadding(14, 14, 12, 14)
+  w.setPadding(14, 15, 13, 15)
   w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000)
   const family = config.widgetFamily || 'medium'
   try {
@@ -319,10 +322,7 @@ if (mode === 'capture') {
   } catch (e) {
     errorWidget(w)
   }
-  w.addSpacer()
-  const df = new DateFormatter(); df.dateFormat = 'HH:mm'
-  const f = w.addText(`Orbite · ${mode} · ${df.string(new Date())}`)
-  f.font = Font.systemFont(8); f.textColor = new Color('#868da6', 0.6)
+  if (family !== 'medium') w.addSpacer()
   if (config.runsInWidget) Script.setWidget(w)
   else await w.presentMedium()
   Script.complete()
