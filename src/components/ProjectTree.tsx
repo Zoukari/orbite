@@ -14,8 +14,8 @@ interface Group { obj: Entity | null; items: Entity[] } // obj null = « Sans ob
 interface Card { e: Entity; cards: Card[]; groups: Group[] }
 interface Section { cat: Entity | null; cards: Card[]; groups: Group[] }
 
-const isContainer = (e: Entity) => e.type === 'project' || e.type === 'category'
-const isGroup = (e: Entity) => e.type === 'objective' || e.type === 'subproject'
+const isContainer = (e: Entity) => e.type === 'project' || e.type === 'subproject' || e.type === 'category'
+const isGroup = (e: Entity) => e.type === 'objective'
 const isItem = (e: Entity) => e.type === 'task' || e.type === 'milestone'
 
 function nearest(ents: Record<string, Entity>, e: Entity, pred: (x: Entity) => boolean, viaLinks = true): Entity | null {
@@ -58,7 +58,7 @@ export function usePlan(showDone: boolean) {
     const cards = new Map<string, Card>()
     const containers = all.filter(isContainer).sort((x, y) => depth(x) - depth(y))
     for (const c of containers) {
-      const parent = nearest(ents, c, isContainer, c.type === 'project')
+      const parent = nearest(ents, c, isContainer, c.type !== 'category')
       if (!parent && c.type === 'category') { sections.set(c.id, { cat: c, cards: [], groups: [] }); continue }
       const card: Card = { e: c, cards: [], groups: [] }
       cards.set(c.id, card)
@@ -166,7 +166,7 @@ function ContainerCard({ c, compact, nested }: { c: Card; compact?: boolean; nes
   const [adding, setAdding] = useState<null | 'objective' | 'project'>(null)
   const [txt, setTxt] = useState('')
   const color = p.color || (p.type === 'category' ? '#b9c3e6' : '#7aa7ff')
-  const prog = p.type === 'project' ? progressOf(ents, p) : null
+  const prog = p.type !== 'category' ? progressOf(ents, p) : null
   const count = (x: Card): number => x.groups.reduce((n, g) => n + g.items.filter((t) => !t.done && t.type === 'task').length, 0) + x.cards.reduce((n, k) => n + count(k), 0)
   const left = count(c)
   const submit = (e: React.FormEvent) => {
@@ -174,7 +174,7 @@ function ContainerCard({ c, compact, nested }: { c: Card; compact?: boolean; nes
     if (!txt.trim() || !adding) return
     const s = useData.getState()
     const pos = p.mapId ? placeChild(s.entities, p) : {}
-    s.create({ type: adding, title: txt.trim(), parentId: p.id, mapId: p.mapId ?? null, status: adding === 'project' ? 'todo' : undefined, ...pos })
+    s.create({ type: adding, title: txt.trim(), parentId: p.id, mapId: p.mapId ?? null, status: adding === 'project' ? 'todo' : undefined, progressMode: adding === 'project' ? 'auto' : undefined, ...pos })
     setTxt('')
   }
   return (
@@ -184,6 +184,7 @@ function ContainerCard({ c, compact, nested }: { c: Card; compact?: boolean; nes
         <span className={nested ? 'text-[13px]' : 'text-[15px]'} style={{ color }}>{p.icon || (p.type === 'category' ? '◇' : '▣')}</span>
         <button className={`min-w-0 flex-1 truncate text-left font-display font-semibold ${nested ? 'text-[14px]' : 'text-[15px]'}`} onClick={() => useUI.getState().open(p.id)}>{p.title}</button>
         {prog != null && !compact && <span className="w-24"><ProgressBar value={prog} color={color} slim /></span>}
+        <button className="text-mute hover:text-ink" title="Mettre dans un autre projet" onClick={() => useUI.getState().set({ addTo: { sourceId: p.id, mode: 'move' } })}><Icon name="move" className="h-3.5 w-3.5" /></button>
         <span className="rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[10.5px] text-mute">{left}</span>
       </div>
       {open && (
@@ -193,12 +194,12 @@ function ContainerCard({ c, compact, nested }: { c: Card; compact?: boolean; nes
           {adding ? (
             <form onSubmit={submit} className="flex items-center gap-2 rounded-xl border border-dashed border-line/70 px-3 py-2">
               <span className="text-[12px]" style={{ color: adding === 'objective' ? '#6fe0b8' : '#7aa7ff' }}>{adding === 'objective' ? '◉' : '▣'}</span>
-              <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder={adding === 'objective' ? 'Nouvel objectif' : 'Nouveau sous-projet'} value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setAdding(null)} onKeyDown={(e) => e.key === 'Escape' && setAdding(null)} />
+              <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder={adding === 'objective' ? 'Nouvel objectif' : 'Nouveau projet dedans'} value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setAdding(null)} onKeyDown={(e) => e.key === 'Escape' && setAdding(null)} />
             </form>
           ) : (
             <div className="flex gap-1.5">
               <button className="flex-1 rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-left text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('objective')}>+ Objectif</button>
-              <button className="rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('project')}>+ Sous-projet</button>
+              <button className="rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('project')}>+ Projet</button>
             </div>
           )}
         </div>

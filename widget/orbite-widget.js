@@ -2,9 +2,10 @@
 // Widgets iPhone Orbite — app gratuite « Scriptable »
 // Nomme ce script exactement : Orbite
 //
-// Un seul script, 3 widgets. Dans les réglages du widget (appui long
+// Un seul script. Dans les réglages du widget (appui long
 // → Modifier le widget), champ « Parameter » :
-//   taches  → 3 priorités + tâches du jour   (par défaut)
+//   (vide)  → TOUT : priorités + inbox + notes   (par défaut)
+//   taches  → 3 priorités + tâches du jour
 //   notes   → dernières notes
 //   inbox   → Inbox + capture rapide (un tap = noter une idée)
 //
@@ -14,7 +15,7 @@
 
 const SUPABASE_URL = 'https://ipduohsswlfkimfzramr.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_djFiZ7Q1jF6iAivXoDXDkw_x0wylLgW'
-const APP_URL = 'https://orbite.vercel.app' // ← remplace par l'URL de ton app Vercel
+const APP_URL = 'https://orbite-gray.vercel.app'
 const SCRIPT_NAME = 'Orbite'
 
 const KC_EMAIL = 'orbite.email'
@@ -209,6 +210,68 @@ async function inboxWidget(w, family) {
   txt(cta, '＋ Capturer une idée', { font: Font.semiboldSystemFont(12), color: C.accent })
 }
 
+async function allWidget(w, family) {
+  w.url = APP_URL
+  const [d, notes, inbox] = await Promise.all([loadTasks(), loadNotes(), loadInbox()])
+  const list = d.top.length ? d.top : d.today.slice(0, 3)
+  const prioRow = (stack, t, i, size) => {
+    const row = stack.addStack()
+    row.centerAlignContent()
+    const p = d.prios.find((x) => x.level === t.priority)
+    txt(row, `0${i + 1}`, { font: Font.boldMonospacedSystemFont(size + 2), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
+    row.addSpacer(6)
+    txt(row, t.title, { font: Font.mediumSystemFont(size), color: t.done ? C.mute : C.ink })
+    stack.addSpacer(4)
+  }
+  if (family === 'small') {
+    header(w, 'PRIORITÉS', inbox.length ? `✉ ${inbox.length}` : '', C.gold)
+    list.slice(0, 3).forEach((t, i) => prioRow(w, t, i, 12))
+    if (!list.length) txt(w, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
+    return
+  }
+  if (family === 'medium') {
+    const cols = w.addStack()
+    const left = cols.addStack(); left.layoutVertically()
+    cols.addSpacer(12)
+    const right = cols.addStack(); right.layoutVertically(); right.size = new Size(120, 0)
+    txt(left, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute }); left.addSpacer(6)
+    list.slice(0, 3).forEach((t, i) => prioRow(left, t, i, 13))
+    if (!list.length) txt(left, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
+    // colonne droite : inbox + dernière note
+    const ib = right.addStack(); ib.url = `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`
+    txt(ib, `INBOX · ${inbox.length}`, { font: Font.semiboldSystemFont(10), color: inbox.length ? C.gold : C.mute })
+    right.addSpacer(3)
+    if (inbox[0]) txt(right, inbox[0].title, { font: Font.systemFont(11), lines: 2 })
+    right.addSpacer(8)
+    txt(right, 'NOTE', { font: Font.semiboldSystemFont(10), color: C.mute }); right.addSpacer(3)
+    if (notes[0]) txt(right, notes[0].title || 'Sans titre', { font: Font.systemFont(11), lines: 2 })
+    w.addSpacer()
+    const foot = w.addStack()
+    txt(foot, `${d.today.length} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length} en retard` : ''}`, { font: Font.systemFont(10), color: d.overdue.length ? C.warn : C.mute })
+    return
+  }
+  // large : 3 sections
+  header(w, 'MES 3 PRIORITÉS', d.overdue.length ? `${d.overdue.length} en retard` : `${d.today.length} aujourd’hui`, d.overdue.length ? C.warn : C.mute)
+  list.slice(0, 3).forEach((t, i) => prioRow(w, t, i, 14))
+  if (!list.length) txt(w, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
+  w.addSpacer(8)
+  const ih = w.addStack(); ih.centerAlignContent(); ih.url = `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`
+  txt(ih, `INBOX · ${inbox.length}`, { font: Font.semiboldSystemFont(10), color: inbox.length ? C.gold : C.mute }); ih.addSpacer()
+  txt(ih, '＋ Capturer', { font: Font.semiboldSystemFont(11), color: C.accent })
+  w.addSpacer(4)
+  inbox.slice(0, 3).forEach((e) => { txt(w, `${TYPE_GLYPH[e.type] || '•'}  ${e.title}`, { font: Font.systemFont(12) }); w.addSpacer(2) })
+  if (!inbox.length) txt(w, 'Tout est rangé.', { color: C.mute, font: Font.systemFont(12) })
+  w.addSpacer(8)
+  const nh = w.addStack(); nh.url = APP_URL + '/#notes'
+  txt(nh, 'NOTES', { font: Font.semiboldSystemFont(10), color: C.mute })
+  w.addSpacer(4)
+  notes.slice(0, 3).forEach((n) => {
+    const r = w.addStack(); r.url = APP_URL + '/#notes'
+    txt(r, `${TYPE_GLYPH[n.type] || '≡'}  ${n.title || 'Sans titre'}`, { font: Font.systemFont(12) })
+    w.addSpacer(2)
+  })
+}
+
 // ───────── Capture (lancée depuis le widget Inbox) ─────────
 async function capture() {
   const a = new Alert()
@@ -233,7 +296,7 @@ async function capture() {
 }
 
 // ───────── Entrée ─────────
-const mode = ((args.queryParameters && args.queryParameters.mode) || args.widgetParameter || 'taches').toString().trim().toLowerCase()
+const mode = ((args.queryParameters && args.queryParameters.mode) || args.widgetParameter || 'tout').toString().trim().toLowerCase()
 
 if (config.runsInApp && (!Keychain.contains(KC_EMAIL) || !Keychain.contains(KC_PASS) || mode === 'login')) {
   await askCredentials()
@@ -251,7 +314,8 @@ if (mode === 'capture') {
   try {
     if (mode.startsWith('note')) await notesWidget(w, family)
     else if (mode.startsWith('inbox')) await inboxWidget(w, family)
-    else await tasksWidget(w, family)
+    else if (mode.startsWith('tache') || mode.startsWith('tâche')) await tasksWidget(w, family)
+    else await allWidget(w, family)
   } catch (e) {
     errorWidget(w)
   }
