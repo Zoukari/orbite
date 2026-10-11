@@ -161,3 +161,7 @@ button { -webkit-user-select: none; user-select: none; }
 .beam-bg { position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgba(201, 211, 255, 0.10); pointer-events: none; }
 .no-anim .beam::before, .no-anim .beam::after { animation: none; }
 @media (prefers-reduced-motion: reduce) { .beam::before, .beam::after { animation: none; } }
+
+/* cible de dépôt pendant le glisser d'une branche */
+.react-flow__node.drop-target .node-body { border-color: #6fe0b8 !important; box-shadow: 0 0 0 4px rgba(111, 224, 184, 0.25), 0 0 28px rgba(111, 224, 184, 0.45) !important; transform: scale(1.04); }
+.react-flow__node.drop-target::after { content: 'Ranger ici'; position: absolute; left: 50%; top: -22px; transform: translateX(-50%); white-space: nowrap; border-radius: 999px; background: #6fe0b8; color: #05060a; font-size: 10.5px; font-weight: 600; padding: 2px 8px; }

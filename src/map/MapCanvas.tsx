@@ -129,8 +129,23 @@ function Canvas() {
     dragStart.current = { id: node.id, x: node.position.x, y: node.position.y, desc }
   }, [mapId])
 
+  // glisser une branche SUR un autre élément = la rattacher à lui (la page Projets suit)
+  const findDropTarget = (node: Node, start = dragStart.current) => {
+    const s = start
+    const skip = new Set([node.id, ...(s?.desc.map((d) => d.id) || [])])
+    const hit = rf.getIntersectingNodes(node).filter((n) => !skip.has(n.id))
+    if (!hit.length) return null
+    // le plus proche du centre de l'élément glissé
+    const cx = node.position.x + (node.measured?.width ?? 150) / 2, cy = node.position.y + (node.measured?.height ?? 40) / 2
+    hit.sort((a, b) => Math.hypot(a.position.x - cx, a.position.y - cy) - Math.hypot(b.position.x - cx, b.position.y - cy))
+    const t = hit[0]
+    return useData.getState().entities[node.id]?.parentId === t.id ? null : t.id
+  }
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
   const onNodeDrag = useCallback((_: MouseEvent | TouchEvent, node: Node) => {
     const s = dragStart.current
+    const target = findDropTarget(node)
+    setDropTarget((cur) => (cur === target ? cur : target))
     if (!s || !s.desc.length) return
     const dx = node.position.x - s.x
     const dy = node.position.y - s.y
@@ -153,7 +168,26 @@ function Canvas() {
     }
     const current = new Map(rf.getNodes().map((n) => [n.id, n.position]))
     const ids = new Set([...dragged.map((d) => d.id), ...(s?.desc.map((d) => d.id) || [])])
-    useData.getState().updateMany([...ids].map((id) => ({ id, patch: { x: Math.round(current.get(id)!.x), y: Math.round(current.get(id)!.y) } })))
+    const targetId = dragged.length === 1 ? findDropTarget(node, s) : null
+    setDropTarget(null)
+    const data = useData.getState()
+    if (targetId && data.entities[targetId] && data.entities[node.id]) {
+      // rattachement : la branche se range à droite de son nouveau parent
+      const target = data.entities[targetId]
+      const pos = placeChild(data.entities, target)
+      const cur = current.get(node.id)!
+      const dx = pos.x - cur.x, dy = pos.y - cur.y
+      data.updateMany([...ids].filter((id) => id !== node.id).map((id) => ({ id, patch: { x: Math.round(current.get(id)!.x + dx), y: Math.round(current.get(id)!.y + dy) } })))
+      const e = data.entities[node.id]
+      data.update(node.id, {
+        parentId: targetId, x: Math.round(pos.x), y: Math.round(pos.y), inbox: false,
+        projectIds: e.projectIds?.filter((p) => p !== e.parentId), objectiveIds: e.objectiveIds?.filter((p) => p !== e.parentId)
+      }, { action: 'moved', detail: target.title })
+      if (target.collapsed) data.update(targetId, { collapsed: false })
+      useUI.getState().notify(`« ${displayTitle(data.entities, e)} » rangé dans « ${displayTitle(data.entities, target)} »`)
+      return
+    }
+    data.updateMany([...ids].map((id) => ({ id, patch: { x: Math.round(current.get(id)!.x), y: Math.round(current.get(id)!.y) } })))
   }, [])
 
   const onNodeClick = useCallback((ev: React.MouseEvent, node: Node) => {
@@ -285,7 +319,7 @@ function Canvas() {
     <div ref={wrapRef} className={`relative h-full w-full ${connectFrom ? 'connecting' : ''}`} onDoubleClick={onPaneDouble} onDragOver={(e) => { if (e.dataTransfer.types.includes('application/orbite')) e.preventDefault() }} onDrop={onDrop}>
       <Starfield offset={vp} calm={calm} light={settings.theme === 'light'} />
       <ReactFlow
-        nodes={nodes}
+        nodes={dropTarget ? nodes.map((n) => (n.id === dropTarget ? { ...n, className: 'drop-target' } : n)) : nodes}
         edges={graph.edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
