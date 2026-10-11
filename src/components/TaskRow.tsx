@@ -22,7 +22,7 @@ function TaskRowImpl({ t, compact, showTop = true, hideProject }: { t: Entity; c
   return (
     <div
       draggable
-      onDragStart={(e) => { e.dataTransfer.setData('application/orbite', t.id); e.dataTransfer.effectAllowed = 'copyMove' }}
+      onDragStart={(e) => { e.dataTransfer.setData('application/orbite', t.id); e.dataTransfer.effectAllowed = 'copyMove'; (window as any).__orbiteDrag = t.id }}
       className={`group flex items-start gap-2.5 rounded-xl px-2 ${compact ? 'py-1.5' : 'py-2'} transition hover:bg-ink/[0.04]`}
     >
       <button

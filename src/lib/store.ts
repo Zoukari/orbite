@@ -268,11 +268,12 @@ export const useData = create<DataState>((set, get) => ({
     const targetMap = mapId ?? parent?.mapId ?? e.mapId ?? null
     const pos = parent ? placeChild(s.entities, parent) : { x: e.x ?? 0, y: e.y ?? 0 }
     const patch: Partial<Entity> = { parentId, mapId: targetMap, inbox: false }
+    if (parentId) { patch.linkedIds = e.linkedIds?.filter((l) => l !== parentId); patch.projectIds = e.projectIds?.filter((l) => l !== parentId); patch.objectiveIds = e.objectiveIds?.filter((l) => l !== parentId) }
     if (targetMap !== e.mapId || parentId !== e.parentId) Object.assign(patch, pos)
     // déplacer aussi les descendants vers la même map
     const desc = descendants(s.entities, id)
     get().update(id, patch, { action: 'moved', detail: parent?.title || 'racine' })
-    if (desc.length && targetMap !== e.mapId) {
+    if (desc.length && (targetMap !== e.mapId || patch.x !== undefined)) {
       const dx = (patch.x ?? e.x ?? 0) - (e.x ?? 0)
       const dy = (patch.y ?? e.y ?? 0) - (e.y ?? 0)
       get().updateMany(desc.map((d) => ({ id: d, patch: { mapId: targetMap, x: (s.entities[d].x ?? 0) + dx, y: (s.entities[d].y ?? 0) + dy } })))
@@ -442,12 +443,24 @@ export function displayTitle(ents: Record<string, Entity>, e: Entity) {
 }
 
 export function placeChild(ents: Record<string, Entity>, parent: Entity) {
-  const kids = childrenOf(ents, parent.id).filter((k) => k.mapId === parent.mapId)
+  const mapId = parent.mapId
   const px = parent.x ?? 0
   const py = parent.y ?? 0
-  const n = kids.length
-  // les enfants s'étalent vers la droite, en éventail
-  return { x: px + 300, y: py + (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 92 }
+  // côté : on continue dans le sens de la branche (gauche si le parent est à gauche de son propre parent)
+  const gp = parent.parentId ? ents[parent.parentId] : undefined
+  const dir = gp && gp.mapId === mapId && (gp.x ?? 0) > px ? -1 : 1
+  const kids = childrenOf(ents, parent.id).filter((k) => k.mapId === mapId)
+  const x = px + dir * 300
+  const tall = (e: Entity) => (['project', 'subproject', 'objective', 'vision', 'category'].includes(e.type) ? 80 : 56)
+  let y = kids.length ? Math.max(...kids.map((k) => (k.y ?? py) + tall(k))) + 22 : py
+  // éviter de tomber sur un élément existant
+  const others = Object.values(ents).filter((e) => e.mapId === mapId && !e.archived && e.id !== parent.id && e.type !== 'map')
+  for (let i = 0; i < 60; i++) {
+    const hit = others.find((o) => Math.abs((o.x ?? 0) - x) < 270 && (o.y ?? 0) < y + 80 && (o.y ?? 0) + tall(o) > y - 6)
+    if (!hit) break
+    y = (hit.y ?? 0) + tall(hit) + 22
+  }
+  return { x, y }
 }
 
 // Tâches rattachées à une entité (descendants + liens explicites)

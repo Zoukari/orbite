@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { useData, useUI, progressOf, placeChild, ancestors } from '../lib/store'
+import { useData, useUI, progressOf, placeChild, ancestors, descendants } from '../lib/store'
 import { fmtDay } from '../lib/dates'
 import { TYPE_META } from '../lib/meta'
 import { TaskRow } from './TaskRow'
@@ -20,7 +20,14 @@ const CONTAINERS: EntityType[] = ['category', 'project', 'subproject']
 const ORDER: Record<string, number> = { category: 0, project: 1, subproject: 2, vision: 3, objective: 4, milestone: 5, task: 6 }
 
 export function planParent(ents: Record<string, Entity>, e: Entity): Entity | null {
-  if (e.parentId && isPlan(ents[e.parentId])) return ents[e.parentId]
+  const R = (x: Entity) => ORDER[x.type] ?? 9
+  // lien explicite vers un niveau supérieur plus précis que le parent actuel (ex. objectif relié à une vision)
+  const direct = e.parentId && isPlan(ents[e.parentId]) ? ents[e.parentId] : null
+  const linked = [...(e.linkedIds || []), ...(e.objectiveIds || []), ...(e.projectIds || [])]
+    .map((id) => ents[id]).filter((x): x is Entity => isPlan(x) && x.id !== e.id && R(x) < R(e))
+    .sort((a, b) => R(b) - R(a))[0]
+  if (linked && (!direct || R(linked) > R(direct))) return linked
+  if (direct) return direct
   // parent direct hors plan (ex. catégorie de la map supprimée) : on remonte
   if (e.parentId) { const up = ancestors(ents, e.id).reverse().find(isPlan); if (up) return up }
   for (const id of [...(e.objectiveIds || []), ...(e.projectIds || [])]) if (isPlan(ents[id]) && ents[id].id !== e.id) return ents[id]
@@ -50,6 +57,46 @@ function useTree(showDone: boolean) {
     return { kids, top, loose }
   }, [ents, showDone])
 }
+
+// ───── Glisser-déposer dans la page Projets ─────
+function canDrop(ents: Record<string, Entity>, srcId: string, target: Entity) {
+  const src = ents[srcId]
+  if (!src || src.id === target.id) return false
+  if (descendants(ents, srcId).includes(target.id)) return false
+  const rs = ORDER[src.type] ?? 9, rt = ORDER[target.type] ?? 9
+  if (CONTAINERS.includes(src.type) && CONTAINERS.includes(target.type)) return true // projet dans projet
+  return rt < rs
+}
+let dragId: string | null = null
+function useDrop(target: Entity) {
+  const [over, setOver] = useState(false)
+  return {
+    over,
+    props: {
+      onDragOver: (ev: React.DragEvent) => {
+        const id = dragId || (window as any).__orbiteDrag
+        if (!id || !canDrop(useData.getState().entities, id, target)) return
+        ev.preventDefault(); ev.stopPropagation()
+        if (!over) setOver(true)
+      },
+      onDragLeave: () => setOver(false),
+      onDrop: (ev: React.DragEvent) => {
+        ev.preventDefault(); ev.stopPropagation(); setOver(false)
+        const id = dragId || (window as any).__orbiteDrag || ev.dataTransfer.getData('application/orbite')
+        dragId = null; (window as any).__orbiteDrag = null
+        const ents = useData.getState().entities
+        if (!id || !canDrop(ents, id, target)) return
+        useData.getState().moveUnder(id, target.id)
+        useUI.getState().notify(`« ${ents[id].title} » rangé dans « ${target.title} »`)
+      }
+    }
+  }
+}
+const dragProps = (id: string) => ({
+  draggable: true,
+  onDragStart: (ev: React.DragEvent) => { dragId = id; ev.dataTransfer.setData('application/orbite', id); ev.dataTransfer.effectAllowed = 'move'; ev.stopPropagation() },
+  onDragEnd: () => { dragId = null }
+})
 
 function useOpen(key: string, def = true) {
   const k = 'orbite.open.' + key
@@ -135,14 +182,16 @@ function AddBar({ parent }: { parent: Entity }) {
 
 function Header({ e, open, toggle, size = 'md', right }: { e: Entity; open: boolean; toggle: () => void; size?: 'lg' | 'md' | 'sm'; right?: ReactNode }) {
   const color = e.color || TYPE_META[e.type].tint
+  const drop = useDrop(e)
   return (
-    <div className={`flex items-center gap-2 ${size === 'lg' ? 'px-3.5 py-3' : 'px-2.5 py-2'}`} style={size === 'lg' ? { background: `linear-gradient(90deg, ${color}18, transparent 60%)` } : undefined}>
+    <div {...dragProps(e.id)} {...drop.props} className={`flex cursor-grab items-center gap-2 rounded-[inherit] transition ${size === 'lg' ? 'px-3.5 py-3' : 'px-2.5 py-2'} ${drop.over ? 'bg-[#6fe0b8]/15 ring-2 ring-[#6fe0b8]/60' : ''}`} style={size === 'lg' && !drop.over ? { background: `linear-gradient(90deg, ${color}18, transparent 60%)` } : undefined}>
       <button onClick={toggle} className="text-mute"><Icon name="chevron" className={`h-3 w-3 transition ${open ? 'rotate-90' : ''}`} /></button>
       <span className={size === 'lg' ? 'text-[15px]' : 'text-[13px]'} style={{ color }}>{e.icon || TYPE_META[e.type].glyph}</span>
       <button className={`min-w-0 flex-1 truncate text-left ${size === 'lg' ? 'font-display text-[15px] font-semibold' : 'text-[13.5px] font-semibold'} ${e.done ? 'text-mute' : ''}`} onClick={() => useUI.getState().open(e.id)}>
         {e.title || 'Sans titre'}
       </button>
       {right}
+      {!CONTAINERS.includes(e.type) && <button className="text-mute/70 hover:text-ink" title="Ranger ailleurs" onClick={() => useUI.getState().set({ addTo: { sourceId: e.id, mode: 'move' } })}><Icon name="move" className="h-3.5 w-3.5" /></button>}
     </div>
   )
 }
@@ -226,9 +275,10 @@ function MilestoneNode({ m, ctx }: { m: Entity; ctx: Ctx }) {
   const [open, toggle] = useOpen(m.id, !m.done)
   const prog = progressOf(ents, m) ?? 0
   const toggleDone = () => useData.getState().update(m.id, { done: !m.done, status: m.done ? 'todo' : 'done', doneAt: m.done ? null : new Date().toISOString() }, { action: m.done ? 'reopened' : 'done' })
+  const drop = useDrop(m)
   return (
     <div className={`rounded-lg ${m.done ? 'bg-[#f4d58d]/[0.05]' : ''}`}>
-      <div className="flex items-center gap-2 px-2 py-1.5">
+      <div {...dragProps(m.id)} {...drop.props} className={`flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 transition ${drop.over ? 'bg-[#6fe0b8]/15 ring-2 ring-[#6fe0b8]/60' : ''}`}>
         <button onClick={toggle} className={`text-mute ${tasks.length || !m.done ? '' : 'invisible'}`}><Icon name="chevron" className={`h-3 w-3 transition ${open ? 'rotate-90' : ''}`} /></button>
         <button className="h-3 w-3 shrink-0 rotate-45 rounded-[2px] border-[1.5px] border-[#f4d58d] transition hover:scale-110" style={{ background: m.done ? '#f4d58d' : 'transparent', boxShadow: m.done ? '0 0 10px #f4d58d88' : undefined }} onClick={toggleDone} title={m.done ? 'Jalon atteint' : 'Marquer comme atteint'} />
         <button className={`min-w-0 flex-1 truncate text-left text-[13.5px] font-medium ${m.done ? 'text-[#f4d58d]' : ''}`} onClick={() => useUI.getState().open(m.id)}>{m.title}</button>
@@ -238,6 +288,7 @@ function MilestoneNode({ m, ctx }: { m: Entity; ctx: Ctx }) {
             {tasks.length > 0 && <span className="w-10"><ProgressBar value={prog} color="#f4d58d" slim showLabel={false} /></span>}
           </>
         )}
+        <button className="text-mute/70 hover:text-ink" title="Ranger ailleurs" onClick={() => useUI.getState().set({ addTo: { sourceId: m.id, mode: 'move' } })}><Icon name="move" className="h-3.5 w-3.5" /></button>
       </div>
       {open && (
         <div className="ml-6 border-l border-dashed border-[#f4d58d]/30 pl-1.5">

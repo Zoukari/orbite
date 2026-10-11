@@ -78,8 +78,17 @@ export function AddToModal() {
       data.link(realId, target.type === 'map' ? realId : target.id)
       ui.notify(`Référence ajoutée dans ${displayTitle(ents, target)}`)
     } else {
-      data.link(src.type === 'ref' ? src.refId! : src.id, targetId)
-      ui.notify(`Lié à ${displayTitle(ents, target)}`)
+      const realId = src.type === 'ref' ? src.refId! : src.id
+      const real = ents[realId]
+      const R: Record<string, number> = { category: 0, project: 1, subproject: 2, vision: 3, objective: 4, milestone: 5, task: 6 }
+      // dans le plan (projet → … → tâche), « lier » à un niveau supérieur = ranger dedans
+      if (real && R[real.type] !== undefined && R[target.type] !== undefined && R[target.type] < R[real.type] && !descendants(ents, realId).includes(targetId)) {
+        data.moveUnder(realId, targetId)
+        ui.notify(`Rangé dans ${displayTitle(ents, target)}`)
+      } else {
+        data.link(realId, targetId)
+        ui.notify(`Lié à ${displayTitle(ents, target)}`)
+      }
     }
     data.touchRecent(targetId)
     close()
