@@ -336,3 +336,48 @@ export function DoneList() {
     </div>
   )
 }
+
+// ───────── Doublons (même nom à deux endroits) ─────────
+const normTitle = (t: string) =>
+  t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/^(vision|objectif|jalon|projet|sous-projet|tache)\s*\d*\s*[:—–-]\s*/i, '')
+    .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 38)
+
+export function DuplicatesBanner() {
+  const ents = useData((s) => s.entities)
+  const [ignored, setIgnored] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('orbite.dupIgnore') || '[]') } catch { return [] } })
+  const pairs = useMemo(() => {
+    const by = new Map<string, Entity[]>()
+    for (const e of Object.values(ents)) {
+      if (!isPlan(e) || e.type === 'task' || !e.title || e.title.length < 6) continue
+      const k = normTitle(e.title)
+      if (k.length < 6) continue
+      by.set(k, [...(by.get(k) || []), e])
+    }
+    return [...by.values()].filter((l) => l.length > 1).map((l) => l.slice(0, 2)).filter(([a, b]) => !ignored.includes([a.id, b.id].sort().join('|')))
+  }, [ents, ignored])
+  if (!pairs.length) return null
+  const where = (e: Entity) => { const p = planParent(ents, e); return p ? p.title : 'racine' }
+  const label = (e: Entity) => TYPE_META[e.type].label
+  return (
+    <div className="mb-4 space-y-2">
+      {pairs.map(([a, b]) => {
+        const key = [a.id, b.id].sort().join('|')
+        const keep = (k: Entity, drop: Entity) => { useData.getState().merge(drop.id, k.id); useUI.getState().notify(`Fusionné dans « ${k.title} »`) }
+        return (
+          <div key={key} className="rounded-2xl border border-[#f2b45a]/35 bg-[#f2b45a]/[0.07] p-3">
+            <div className="text-[13px]"><b>« {a.title.slice(0, 60)}{a.title.length > 60 ? '…' : ''} »</b> existe 2 fois :</div>
+            <div className="mt-1 text-[12px] text-mute">
+              <span style={{ color: a.color || TYPE_META[a.type].tint }}>{a.icon || TYPE_META[a.type].glyph}</span> {label(a)} dans {where(a)} · <span style={{ color: b.color || TYPE_META[b.type].tint }}>{b.icon || TYPE_META[b.type].glyph}</span> {label(b)} dans {where(b)}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button className="btn-soft !py-1.5 text-xs" onClick={() => keep(a, b)}>Garder : {label(a)} ({where(a)})</button>
+              <button className="btn-soft !py-1.5 text-xs" onClick={() => keep(b, a)}>Garder : {label(b)} ({where(b)})</button>
+              <button className="btn-ghost !py-1.5 text-xs" onClick={() => { const n = [...ignored, key]; setIgnored(n); try { localStorage.setItem('orbite.dupIgnore', JSON.stringify(n)) } catch {} }}>Ce sont 2 choses différentes</button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}

@@ -50,6 +50,7 @@ interface DataState {
   remove(id: string): void
   archive(id: string, archived?: boolean): void
   duplicate(id: string): string | null
+  merge(sourceId: string, targetId: string): void
   toggleDone(id: string): void
   moveUnder(id: string, parentId: string | null, mapId?: string | null): void
   addRef(targetId: string, parentId: string | null, mapId: string, pos?: { x: number; y: number }): Entity
@@ -161,6 +162,51 @@ export const useData = create<DataState>((set, get) => ({
     }
     set((s) => ({ entities: ents, rev: s.rev + 1 }))
     persistEntities(changed)
+  },
+
+  // Fusionne un doublon dans un autre : enfants, liens et connexions passent à la cible
+  merge(sourceId, targetId) {
+    const s0 = get()
+    const src = s0.entities[sourceId], tgt = s0.entities[targetId]
+    if (!src || !tgt || sourceId === targetId || descendants(s0.entities, sourceId).includes(targetId)) return
+    const kids = Object.values(s0.entities).filter((e) => e.parentId === sourceId)
+    for (const k of kids) get().moveUnder(k.id, targetId)
+    const swap = (a?: string[]) => (a?.includes(sourceId) ? uniq(a.map((x) => (x === sourceId ? targetId : x)).filter((x) => x !== undefined)) : a)
+    const ents = get().entities
+    const patches: { id: string; patch: Partial<Entity> }[] = []
+    for (const e of Object.values(ents)) {
+      if (e.id === sourceId) continue
+      if (e.linkedIds?.includes(sourceId) || e.projectIds?.includes(sourceId) || e.objectiveIds?.includes(sourceId)) {
+        const clean = (a?: string[]) => swap(a)?.filter((x) => !(x === targetId && e.id === targetId))
+        patches.push({ id: e.id, patch: { linkedIds: clean(e.linkedIds), projectIds: clean(e.projectIds), objectiveIds: clean(e.objectiveIds) } })
+      }
+      if (e.type === 'ref' && e.refId === sourceId) patches.push({ id: e.id, patch: { refId: targetId } })
+    }
+    if (patches.length) get().updateMany(patches)
+    // la cible récupère description, tags, couleur/emoji si elle n'en a pas
+    const t2 = get().entities[targetId]
+    get().update(targetId, {
+      description: [t2.description, src.description].filter(Boolean).join('\n\n') || undefined,
+      tags: uniq([...(t2.tags || []), ...(src.tags || [])]),
+      icon: t2.icon || src.icon, color: t2.color || src.color,
+      linkedIds: t2.linkedIds?.filter((x) => x !== sourceId && x !== targetId)
+    }, { action: 'linked', detail: `fusion de « ${src.title} »` })
+    // connexions : on les reporte, sans doublon ni boucle
+    const edges = Object.values(get().edges)
+    for (const ed of edges) {
+      if (ed.source !== sourceId && ed.target !== sourceId) continue
+      const a = ed.source === sourceId ? targetId : ed.source, b = ed.target === sourceId ? targetId : ed.target
+      get().removeEdge(ed.id)
+      if (a !== b) get().addEdge(ed.mapId, a, b, ed.kind)
+    }
+    // connexions devenues redondantes (déjà parent/enfant)
+    const e3 = get().entities
+    for (const ed of Object.values(get().edges)) {
+      if (e3[ed.source]?.parentId === ed.target || e3[ed.target]?.parentId === ed.source) get().removeEdge(ed.id)
+    }
+    const top = get().settings.dailyTop
+    if (top.ids.includes(sourceId)) get().setSettings({ dailyTop: { ...top, ids: top.ids.filter((x) => x !== sourceId) } })
+    get().remove(sourceId)
   },
 
   remove(id) {

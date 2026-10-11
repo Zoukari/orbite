@@ -33,6 +33,7 @@ export function ContextMenu() {
     { icon: 'move', label: 'Déplacer vers…', act: run(() => ui.set({ addTo: { sourceId: e.id, mode: 'move' } })) },
     { icon: 'connect', label: 'Créer connexion', act: run(() => ui.set({ connectFrom: e.id })), hide: !e.mapId },
     { icon: 'copy', label: 'Dupliquer', act: run(() => data.duplicate(e.id)) },
+    { icon: 'connect', label: 'Fusionner dans…', act: run(() => ui.set({ addTo: { sourceId: e.id, mode: 'pickParent', onPick: (t) => { const d = useData.getState(); if (confirm(`Fusionner « ${displayTitle(d.entities, e)} » dans « ${displayTitle(d.entities, d.entities[t])} » ? Son contenu passe dedans, puis il est supprimé.`)) { d.merge(e.id, t); useUI.getState().notify('Fusionné') } } } })) },
     { icon: 'star', label: e.favorite ? 'Retirer des favoris' : 'Favori', act: run(() => data.update(e.id, { favorite: !e.favorite })) },
     { icon: e.collapsed ? 'expand' : 'collapse', label: e.collapsed ? 'Déplier la branche' : 'Réduire la branche', act: run(() => data.update(e.id, { collapsed: !e.collapsed })), hide: !hasKids },
     { icon: 'share', label: 'Partager…', act: run(() => ui.set({ share: e.id })), sep: true },

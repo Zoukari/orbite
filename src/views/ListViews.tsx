@@ -6,7 +6,7 @@ import { exportTasksCsv } from '../lib/backup'
 import { plainExcerpt } from '../lib/markdown'
 import { TYPE_META } from '../lib/meta'
 import { TaskRow } from '../components/TaskRow'
-import { ProjectTree, DoneList } from '../components/ProjectTree'
+import { ProjectTree, DoneList, DuplicatesBanner } from '../components/ProjectTree'
 import { TopThree } from '../components/Priorities'
 const NotesBoard = lazy(() => import('./NotesBoard').then((m) => ({ default: m.NotesBoard })))
 import { Empty, Icon, Info, ProgressBar, StatusPill, TypeGlyph, Segmented } from '../components/ui'
@@ -43,6 +43,7 @@ export function TasksView() {
         <div className="mb-3 flex items-center gap-1.5 overflow-x-auto px-1 text-[11px] text-mute no-scrollbar">
           {['Projet', 'Sous-projet', 'Vision', 'Objectif', 'Jalon', 'Tâche'].map((l, i) => <span key={l} className="flex shrink-0 items-center gap-1.5">{i > 0 && <span className="opacity-50">→</span>}{l}</span>)}
         </div>
+        <DuplicatesBanner />
         <div className="mb-5"><TopThree /></div>
         <ProjectTree showDone={doneToo} />
       </Page>
