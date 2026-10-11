@@ -105,19 +105,82 @@ async function loadInbox() {
 const C = { bg: new Color('#05060a'), ink: new Color('#e8ecff'), mute: new Color('#868da6'), accent: new Color('#8ea2ff'), done: new Color('#6fe0b8'), warn: new Color('#ff8a8a'), gold: new Color('#f2b45a') }
 const TYPE_GLYPH = { note: '≡', idea: '✧', text: 'T', checklist: '☑', document: '▤', task: '○', project: '▣', objective: '◉' }
 
-function addStars(w) {
+// Fond : ciel étoilé + faisceau blanc lumineux qui fait le tour des bords.
+// iOS n'anime pas les widgets : la comète avance à chaque rafraîchissement.
+function addStars(w, family) {
+  const dims = { small: [170, 170], medium: [364, 170], large: [364, 382] }[family] || [364, 170]
+  const S = 3 // résolution
+  const W = dims[0] * S, H = dims[1] * S
   const ctx = new DrawContext()
-  ctx.size = new Size(400, 400)
+  ctx.size = new Size(W, H)
   ctx.opaque = true
+  ctx.respectScreenScale = false
   ctx.setFillColor(C.bg)
-  ctx.fillRect(new Rect(0, 0, 400, 400))
+  ctx.fillRect(new Rect(0, 0, W, H))
+
+  // étoiles
   let seed = 7
   const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
-  for (let i = 0; i < 70; i++) {
-    const r = rnd() < 0.9 ? 0.8 : 1.4
-    ctx.setFillColor(new Color('#dfe5ff', 0.15 + rnd() * 0.5))
-    ctx.fillEllipse(new Rect(rnd() * 400, rnd() * 400, r, r))
+  const n = Math.round((W * H) / (S * S * 900))
+  for (let i = 0; i < n; i++) {
+    const r = (rnd() < 0.9 ? 0.8 : 1.5) * S
+    ctx.setFillColor(new Color('#dfe5ff', 0.12 + rnd() * 0.5))
+    ctx.fillEllipse(new Rect(rnd() * W, rnd() * H, r, r))
   }
+
+  // contour du widget (rectangle arrondi), paramétré de 0 à 1
+  const inset = 2.2 * S, R = (family === 'small' ? 20 : 22) * S
+  const x0 = inset, y0 = inset, x1 = W - inset, y1 = H - inset
+  const sw = x1 - x0 - 2 * R, sh = y1 - y0 - 2 * R, arc = (Math.PI * R) / 2
+  const L = 2 * sw + 2 * sh + 4 * arc
+  const at = (t) => {
+    let d = ((t % 1) + 1) % 1 * L
+    const seg = [
+      [sw, (u) => [x0 + R + u, y0]],
+      [arc, (u) => { const a = -Math.PI / 2 + u / R; return [x1 - R + R * Math.cos(a), y0 + R + R * Math.sin(a)] }],
+      [sh, (u) => [x1, y0 + R + u]],
+      [arc, (u) => { const a = u / R; return [x1 - R + R * Math.cos(a), y1 - R + R * Math.sin(a)] }],
+      [sw, (u) => [x1 - R - u, y1]],
+      [arc, (u) => { const a = Math.PI / 2 + u / R; return [x0 + R + R * Math.cos(a), y1 - R + R * Math.sin(a)] }],
+      [sh, (u) => [x0, y1 - R - u]],
+      [arc, (u) => { const a = Math.PI + u / R; return [x0 + R + R * Math.cos(a), y0 + R + R * Math.sin(a)] }]
+    ]
+    for (const [len, f] of seg) { if (d <= len) return f(d); d -= len }
+    return [x0 + R, y0]
+  }
+  const dot = (x, y, r, color, alpha) => { ctx.setFillColor(new Color(color, alpha)); ctx.fillEllipse(new Rect(x - r, y - r, 2 * r, 2 * r)) }
+
+  // fin liseré permanent
+  for (let i = 0; i < 900; i++) { const [x, y] = at(i / 900); dot(x, y, 0.55 * S, '#c9d3ff', 0.16) }
+
+  // position de la comète : avance avec l'heure (un tour ≈ toutes les 2 h)
+  const now = new Date()
+  const head = ((now.getHours() * 60 + now.getMinutes()) % 120) / 120
+  const trail = 0.34
+  const steps = 420
+  for (let i = steps; i >= 0; i--) {
+    const k = i / steps // 0 = tête, 1 = bout de la traîne
+    const [x, y] = at(head - k * trail)
+    const f = Math.pow(1 - k, 1.6)
+    dot(x, y, (5.5 * f + 1.2) * S, '#9fb0ff', 0.035 * f) // halo bleuté large
+    dot(x, y, (2.4 * f + 0.6) * S, '#ffffff', 0.10 * f) // lueur
+    dot(x, y, (0.9 * f + 0.45) * S, '#ffffff', 0.25 + 0.75 * f) // trait
+  }
+  // seconde comète plus discrète à l'opposé
+  for (let i = 140; i >= 0; i--) {
+    const k = i / 140, [x, y] = at(head + 0.5 - k * 0.12), f = Math.pow(1 - k, 2)
+    dot(x, y, (2 * f + 0.4) * S, '#ffffff', 0.08 * f)
+    dot(x, y, (0.6 * f + 0.3) * S, '#ffffff', 0.15 + 0.4 * f)
+  }
+  // tête : étoile à 4 branches
+  const [hx, hy] = at(head)
+  for (let r = 14; r > 0; r -= 1.5) dot(hx, hy, r * S, '#ffffff', 0.05)
+  dot(hx, hy, 2.6 * S, '#ffffff', 1)
+  ctx.setStrokeColor(new Color('#ffffff', 0.85)); ctx.setLineWidth(0.9 * S)
+  const flare = (dx, dy, len) => { const p = new Path(); p.move(new Point(hx - dx * len, hy - dy * len)); p.addLine(new Point(hx + dx * len, hy + dy * len)); ctx.addPath(p); ctx.strokePath() }
+  flare(1, 0, 13 * S); flare(0, 1, 13 * S)
+  ctx.setStrokeColor(new Color('#ffffff', 0.35)); flare(0.7, 0.7, 6 * S); flare(0.7, -0.7, 6 * S)
+
   w.backgroundImage = ctx.getImage()
 }
 function txt(stack, text, opts = {}) {
@@ -331,9 +394,9 @@ if (mode === 'capture') {
   Script.complete()
 } else {
   const w = new ListWidget()
-  addStars(w)
+  addStars(w, config.widgetFamily || 'medium')
   w.setPadding(14, 15, 13, 15)
-  w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000)
+  w.refreshAfterDate = new Date(Date.now() + 5 * 60 * 1000)
   const family = config.widgetFamily || 'medium'
   try {
     if (mode.startsWith('note')) await notesWidget(w, family)
