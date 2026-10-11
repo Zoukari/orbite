@@ -102,14 +102,22 @@ function Canvas() {
   // ── Centrage initial / changement de map
   useEffect(() => {
     const t = setTimeout(() => {
-      // vue d'ensemble si elle reste lisible, sinon on centre sur le cœur de la map
-      rf.fitView({ padding: 0.2, maxZoom: 1.1 }).then(() => {
-        if (rf.getZoom() >= 0.5) return
-        const ents = useData.getState().entities
-        const root = Object.values(ents).find((e) => e.mapId === mapId && !e.parentId && e.type !== 'map')
-        if (root) rf.setCenter((root.x ?? 0) + 260, root.y ?? 0, { zoom: mobile ? 0.95 : 0.8, duration: 600 })
-      })
-    }, 60)
+      // centre = le nœud racine qui porte le plus d'éléments (ex. « Zouk's Life »)
+      const ents = useData.getState().entities
+      const onMap = Object.values(ents).filter((e) => e.mapId === mapId && e.type !== 'map' && !e.archived)
+      const roots = onMap.filter((e) => !e.parentId || !ents[e.parentId] || ents[e.parentId].mapId !== mapId)
+      const size = (id: string) => descendants(ents, id).length
+      const root = roots.sort((a, b) => Number(b.type === 'vision') - Number(a.type === 'vision') || size(b.id) - size(a.id))[0]
+      if (!root) { rf.fitView({ padding: 0.2, maxZoom: 1.1 }); return }
+      // zoom qui laisse voir le 1er niveau autour du centre, sans dézoomer à l'extrême
+      const ring = onMap.filter((e) => e.parentId === root.id || e.id === root.id)
+      const xs = ring.map((e) => Math.abs((e.x ?? 0) - (root.x ?? 0)) + 140)
+      const ys = ring.map((e) => Math.abs((e.y ?? 0) - (root.y ?? 0)) + 60)
+      const el = document.querySelector('.react-flow') as HTMLElement | null
+      const W = el?.clientWidth || innerWidth, H = el?.clientHeight || innerHeight
+      const zoom = Math.max(mobile ? 0.55 : 0.45, Math.min(1.1, (W / 2) / Math.max(...xs, 200), (H / 2) / Math.max(...ys, 150)))
+      rf.setCenter((root.x ?? 0) + 70, (root.y ?? 0) + 18, { zoom, duration: 500 })
+    }, 80)
     return () => clearTimeout(t)
   }, [mapId])
 
@@ -317,7 +325,7 @@ function Canvas() {
         <div className="pointer-events-auto glass flex items-center gap-0.5 rounded-2xl border border-line/60 p-1 shadow-sm">
           <button className="icon-btn" title="Ajouter (double-clic sur le vide)" onClick={() => { const b = wrapRef.current!.getBoundingClientRect(); setAddMenu({ x: b.left + b.width / 2 - 120, y: b.top + 80, flow: rf.screenToFlowPosition({ x: b.left + b.width / 2, y: b.top + b.height / 2 }) }) }}><Icon name="plus" /></button>
           <button className="icon-btn" title="Réorganiser (sélection ou tout)" onClick={relayout}><Icon name="layout" /></button>
-          <button className="icon-btn" title="Recentrer" onClick={() => rf.fitView({ padding: 0.2, duration: 500 })}><Icon name="center" /></button>
+          <button className="icon-btn" title="Recentrer (double : tout voir)" onClick={() => rf.fitView({ padding: 0.2, duration: 500 })}><Icon name="center" /></button>
           <button className={`icon-btn ${focusId ? 'text-accent' : ''}`} title="Mode Focus" onClick={() => useUI.getState().set({ focusId: focusId ? null : '__pick' })}><Icon name="focus" /></button>
           {!mobile && <span className="flex h-9 w-7 items-center justify-center"><Info text={<>Double-clic sur le vide : créer. <b>Tab</b> : ajouter un enfant · <b>Entrée</b> : un frère · <b>F2</b> : renommer · clic droit : menu. Glisser une branche déplace ses enfants (<b>Alt</b> pour la déplacer seule).</>} /></span>}
           {!mobile && <button className={`icon-btn ${settings.rightPanel ? 'text-accent' : ''}`} title="Panneau Aujourd'hui" onClick={() => useData.getState().setSettings({ rightPanel: !settings.rightPanel })}><Icon name="sidebar" /></button>}

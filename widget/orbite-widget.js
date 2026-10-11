@@ -232,25 +232,31 @@ async function allWidget(w, family) {
     return
   }
   if (family === 'medium') {
-    const cols = w.addStack()
-    cols.topAlignContent()
-    const left = cols.addStack(); left.layoutVertically()
-    cols.addSpacer(14)
-    const right = cols.addStack(); right.layoutVertically(); right.size = new Size(128, 0)
-    txt(left, 'PRIORITÉS', { font: Font.semiboldSystemFont(11), color: C.mute }); left.addSpacer(7)
-    list.slice(0, 3).forEach((t, i) => prioRow(left, t, i, 16))
-    if (!list.length) txt(left, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(14) })
-    // colonne droite : inbox + dernière note
-    const ib = right.addStack(); ib.url = `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`
-    txt(ib, `INBOX · ${inbox.length}`, { font: Font.semiboldSystemFont(11), color: inbox.length ? C.gold : C.mute })
-    right.addSpacer(4)
-    inbox.slice(0, 2).forEach((e) => { txt(right, e.title, { font: Font.mediumSystemFont(14), lines: 2 }); right.addSpacer(3) })
-    right.addSpacer(8)
-    const nh = right.addStack(); nh.url = APP_URL + '/#notes'
-    txt(nh, 'NOTE', { font: Font.semiboldSystemFont(11), color: C.mute }); right.addSpacer(4)
-    if (notes[0]) txt(right, notes[0].title || 'Sans titre', { font: Font.mediumSystemFont(14), lines: 2 })
+    // haut : priorités sur toute la largeur — bas : 2 cartes Inbox | Note
+    const top = w.addStack(); top.layoutVertically()
+    const th = top.addStack(); th.centerAlignContent()
+    txt(th, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute }); th.addSpacer()
+    txt(th, `${d.today.length} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length} en retard` : ''}`, { font: Font.mediumSystemFont(10), color: d.overdue.length ? C.warn : C.mute })
+    top.addSpacer(4)
+    list.slice(0, 2).forEach((t, i) => prioRow(top, t, i, 14))
+    if (!list.length) txt(top, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(13) })
     w.addSpacer()
-    txt(w, `${d.today.length} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length} en retard` : ''}`, { font: Font.mediumSystemFont(13), color: d.overdue.length ? C.warn : C.mute })
+    const row = w.addStack()
+    const card = (title, body, color, url) => {
+      const c = row.addStack(); c.layoutVertically()
+      c.backgroundColor = new Color('#ffffff', 0.06); c.cornerRadius = 12; c.setPadding(7, 9, 7, 9)
+      c.size = new Size(0, 52)
+      if (url) c.url = url
+      const h = c.addStack(); h.addSpacer(0)
+      txt(h, title, { font: Font.semiboldSystemFont(10), color })
+      h.addSpacer()
+      c.addSpacer(2)
+      txt(c, body, { font: Font.mediumSystemFont(13), lines: 1 })
+      return c
+    }
+    card(`INBOX · ${inbox.length}`, inbox[0] ? inbox[0].title : '＋ Capturer', inbox.length ? C.gold : C.accent, `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`)
+    row.addSpacer(8)
+    card(`NOTES · ${notes.length}`, notes[0] ? (notes[0].title || 'Sans titre') : 'Aucune note', C.mute, APP_URL + '/#notes')
     return
   }
   // large : 3 sections
