@@ -128,6 +128,9 @@ button { -webkit-user-select: none; user-select: none; }
 
 .safe-b { padding-bottom: env(safe-area-inset-bottom); }
 .safe-t { padding-top: env(safe-area-inset-top); }
+.top-safe { top: calc(env(safe-area-inset-top) + 10px); }
+.pt-safe { padding-top: calc(env(safe-area-inset-top) + 20px); }
+@media (min-width: 768px) { .top-safe { top: 16px; } .pt-safe { padding-top: 40px; } }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 

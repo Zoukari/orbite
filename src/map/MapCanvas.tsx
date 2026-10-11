@@ -320,12 +320,12 @@ function Canvas() {
       </ReactFlow>
 
       {/* Barre d'outils de la carte */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3 md:p-4">
+      <div className="pointer-events-none absolute inset-x-0 top-safe flex items-start justify-between gap-2 px-3 md:px-4">
         <MapSwitcher />
-        <div className="pointer-events-auto glass flex items-center gap-0.5 rounded-2xl border border-line/60 p-1 shadow-sm">
-          <button className="icon-btn" title="Ajouter (double-clic sur le vide)" onClick={() => { const b = wrapRef.current!.getBoundingClientRect(); setAddMenu({ x: b.left + b.width / 2 - 120, y: b.top + 80, flow: rf.screenToFlowPosition({ x: b.left + b.width / 2, y: b.top + b.height / 2 }) }) }}><Icon name="plus" /></button>
+        <div className={`pointer-events-auto glass flex rounded-2xl border border-line/60 p-1 shadow-sm ${mobile ? 'flex-col gap-1' : 'items-center gap-0.5'}`}>
+          <button className="icon-btn" title="Ajouter" onClick={() => { const b = wrapRef.current!.getBoundingClientRect(); setAddMenu({ x: b.left + b.width / 2 - 120, y: b.top + 80, flow: rf.screenToFlowPosition({ x: b.left + b.width / 2, y: b.top + b.height / 2 }) }) }}><Icon name="plus" /></button>
+          <button className="icon-btn" title="Recentrer / tout voir" onClick={() => rf.fitView({ padding: 0.2, duration: 500 })}><Icon name="center" /></button>
           <button className="icon-btn" title="Réorganiser (sélection ou tout)" onClick={relayout}><Icon name="layout" /></button>
-          <button className="icon-btn" title="Recentrer (double : tout voir)" onClick={() => rf.fitView({ padding: 0.2, duration: 500 })}><Icon name="center" /></button>
           <button className={`icon-btn ${focusId ? 'text-accent' : ''}`} title="Mode Focus" onClick={() => useUI.getState().set({ focusId: focusId ? null : '__pick' })}><Icon name="focus" /></button>
           {!mobile && <span className="flex h-9 w-7 items-center justify-center"><Info text={<>Double-clic sur le vide : créer. <b>Tab</b> : ajouter un enfant · <b>Entrée</b> : un frère · <b>F2</b> : renommer · clic droit : menu. Glisser une branche déplace ses enfants (<b>Alt</b> pour la déplacer seule).</>} /></span>}
           {!mobile && <button className={`icon-btn ${settings.rightPanel ? 'text-accent' : ''}`} title="Panneau Aujourd'hui" onClick={() => useData.getState().setSettings({ rightPanel: !settings.rightPanel })}><Icon name="sidebar" /></button>}
@@ -445,7 +445,7 @@ function MapSwitcher() {
     <div className="pointer-events-auto relative">
       <button className="glass flex items-center gap-2 rounded-2xl border border-line/60 px-3.5 py-2 shadow-sm" onClick={() => setOpen(!open)}>
         <span className="text-accent">{active?.icon || '◎'}</span>
-        <span className="max-w-[46vw] truncate font-display text-sm font-semibold">{active?.title || 'Map'}</span>
+        <span className="max-w-[52vw] truncate font-display text-sm font-semibold md:max-w-[30vw]">{active?.title || 'Map'}</span>
         <Icon name="down" className="h-3.5 w-3.5 text-mute" />
       </button>
       {open && (

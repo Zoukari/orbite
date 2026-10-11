@@ -13,11 +13,12 @@ import { create } from 'zustand'
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-export const supabase: SupabaseClient | null = URL && KEY ? createClient(URL, KEY, { auth: { persistSession: true, storageKey: 'orbite.auth' } }) : null
+export const supabase: SupabaseClient | null = URL && KEY ? createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'orbite.auth' } }) : null
 
 type SyncStatus = 'off' | 'idle' | 'syncing' | 'error' | 'offline'
-export const useSync = create<{ session: Session | null; status: SyncStatus; error?: string; set: (p: any) => void }>((set) => ({
+export const useSync = create<{ session: Session | null; checked: boolean; status: SyncStatus; error?: string; set: (p: any) => void }>((set) => ({
   session: null,
+  checked: !URL || !KEY,
   status: supabase ? 'idle' : 'off',
   set
 }))
@@ -142,8 +143,10 @@ let syncStarted = false
 export async function initSync() {
   if (!supabase || syncStarted) return
   syncStarted = true
+  // demande au navigateur de ne jamais effacer les données de l'app (session incluse)
+  try { await navigator.storage?.persist?.() } catch {}
   const { data } = await supabase.auth.getSession()
-  useSync.getState().set({ session: data.session })
+  useSync.getState().set({ session: data.session, checked: true })
   if (data.session?.user.email) rememberEmail(data.session.user.email)
   supabase.auth.onAuthStateChange((_evt, session) => {
     useSync.getState().set({ session })

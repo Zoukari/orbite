@@ -15,7 +15,7 @@ import type { Entity, EntityType } from '../lib/types'
 export function Page({ title, sub, actions, children }: { title: string; sub?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-4xl px-4 pb-28 pt-6 md:px-8 md:pb-12 md:pt-10">
+      <div className="mx-auto max-w-4xl px-4 pb-28 pt-safe md:px-8 md:pb-12">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3 px-1 pr-12 md:pr-1">
           <div>
             <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
@@ -174,7 +174,7 @@ export function NotesView() {
     return (
       <div className="relative h-full" data-dropzone="notes">
         <Suspense fallback={null}><NotesBoard notes={notes} /></Suspense>
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 p-4 pr-16 md:pr-4">
+        <div className="pointer-events-none absolute inset-x-0 top-safe flex items-center gap-3 px-4 pr-16 md:pr-4">
           <h1 className="pointer-events-auto font-display text-2xl font-semibold tracking-tight">Notes</h1>
           <div className="pointer-events-auto glass rounded-xl">{switcher}</div>
           <div className="flex-1" />

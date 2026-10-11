@@ -29,7 +29,7 @@ export function HomeView() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-5 pb-28 pt-8 md:px-10 md:pb-12 md:pt-12">
+      <div className="mx-auto max-w-5xl px-5 pb-28 pt-safe md:px-10 md:pb-12">
         <div className="text-sm text-mute">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
         <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight md:text-4xl">{hello}.</h1>
         <div className="mt-3 max-w-xl"><QuoteLine /></div>

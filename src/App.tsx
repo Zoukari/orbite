@@ -58,8 +58,15 @@ function Main() {
   useReminders()
   useShortcuts()
 
-  if (!ready) return <div className="h-full bg-bg" />
-  if (!onboarded && !hasMap) return <><Onboarding /><SyncLoginHint /></>
+  const session = useSync((s) => s.session)
+  const checked = useSync((s) => s.checked)
+  const [skipLogin, setSkipLogin] = useState(() => { try { return localStorage.getItem('orbite.local') === '1' } catch { return false } })
+  if (!ready || !checked) return <div className="h-full bg-bg" />
+  // nouvel appareil / app installée : une seule connexion (PIN), ensuite on reste connecté
+  if (!hasMap && !session && !skipLogin && import.meta.env.VITE_SUPABASE_URL)
+    return <FirstLogin onSkip={() => { try { localStorage.setItem('orbite.local', '1') } catch {} setSkipLogin(true) }} />
+  if (!onboarded && !hasMap && !session) return <Onboarding />
+  if (!hasMap && session) return <Syncing />
   return <Shell />
 }
 
@@ -121,7 +128,7 @@ function Shell() {
           </button>
         )}
         {mobile && view !== 'map' && (
-          <button className="glass fixed right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-line/60 safe-t" onClick={() => useUI.getState().set({ palette: true })}><Icon name="search" /></button>
+           <button className="glass fixed right-3 top-safe z-20 flex h-10 w-10 items-center justify-center rounded-full border border-line/60" onClick={() => useUI.getState().set({ palette: true })}><Icon name="search" /></button>
         )}
         {!mobile && (
           <button
@@ -260,6 +267,36 @@ function CreateMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 // Sur un nouvel appareil : se connecter récupère tout depuis le cloud
+function FirstLogin({ onSkip }: { onSkip: () => void }) {
+  return (
+    <div className="flex min-h-full items-center justify-center px-6">
+      <div className="rise w-full max-w-sm text-center">
+        <img src="/icons/icon-192.png" alt="" className="mx-auto mb-6 h-14 w-14 rounded-2xl" />
+        <h1 className="mb-1 font-display text-2xl font-semibold">Orbite</h1>
+        <p className="mb-6 text-sm text-mute">Une seule fois sur cet appareil — ensuite tu restes connecté.</p>
+        <PinLogin />
+        <button className="mt-6 text-xs text-mute hover:text-ink" onClick={onSkip}>Continuer sans compte</button>
+      </div>
+    </div>
+  )
+}
+
+function Syncing() {
+  useEffect(() => {
+    import('./lib/sync').then(({ syncNow }) => syncNow()).then(() => {
+      const s = useData.getState()
+      const m = Object.values(s.entities).find((x) => x.type === 'map')
+      if (m) s.setSettings({ onboarded: true, activeMapId: s.settings.activeMapId || m.id })
+      else s.setSettings({ onboarded: false })
+    })
+  }, [])
+  const has = useData((s) => Object.values(s.entities).some((e) => e.type === 'map'))
+  const [late, setLate] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setLate(true), 6000); return () => clearTimeout(t) }, [])
+  if (late && !has) return <Onboarding />
+  return <div className="flex h-full items-center justify-center text-sm text-mute">Récupération de tes données…</div>
+}
+
 function SyncLoginHint() {
   const [open, setOpen] = useState(false)
   if (!(import.meta.env.VITE_SUPABASE_URL)) return null
