@@ -90,7 +90,10 @@ async function loadTasks() {
   const top = ((settings.dailyTop && settings.dailyTop.ids) || []).map((id) => byId[id]).filter(Boolean)
   const today = open.filter((x) => x.date && x.date <= t).sort((a, b) => (b.priority || 0) - (a.priority || 0))
   const overdue = open.filter((x) => (x.date && x.date < t) || (x.postponed || 0) > 0)
-  return { top, today, overdue, prios: settings.priorities || [] }
+  const isToday = (iso) => { if (!iso) return false; const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === t }
+  const doneToday = tasks.filter((x) => x.done && isToday(x.doneAt)).length
+  const total = today.length + doneToday
+  return { top, today, overdue, doneToday, total, progress: total ? doneToday / total : 0, prios: settings.priorities || [] }
 }
 async function loadNotes() {
   const rows = await get('lm_entities?select=doc&deleted=eq.false&type=in.(note,idea,text,checklist,document)&order=updated_at.desc&limit=20')
@@ -115,8 +118,28 @@ function addStars(w, family) {
   ctx.size = new Size(W, H)
   ctx.opaque = true
   ctx.respectScreenScale = false
-  ctx.setFillColor(C.bg)
-  ctx.fillRect(new Rect(0, 0, W, H))
+  // ciel qui suit l'heure : aube dorée, jour bleu profond, crépuscule violet, nuit noire
+  const hr = new Date().getHours() + new Date().getMinutes() / 60
+  const SKIES = {
+    dawn: { top: [24, 18, 46], bottom: [70, 40, 52], glow: '#ffb46b', ga: 0.22, stars: 0.5 },
+    day: { top: [8, 20, 44], bottom: [16, 38, 78], glow: '#6fb7ff', ga: 0.16, stars: 0.35 },
+    dusk: { top: [20, 12, 40], bottom: [74, 30, 70], glow: '#ff7aa8', ga: 0.2, stars: 0.6 },
+    night: { top: [4, 5, 10], bottom: [10, 12, 26], glow: '#7f8cff', ga: 0.12, stars: 1 }
+  }
+  const sky = hr >= 5 && hr < 8 ? SKIES.dawn : hr >= 8 && hr < 17 ? SKIES.day : hr >= 17 && hr < 20.5 ? SKIES.dusk : SKIES.night
+  const bands = 80
+  for (let i = 0; i < bands; i++) {
+    const k = i / (bands - 1)
+    const c = sky.top.map((v, j) => Math.round(v + (sky.bottom[j] - v) * k))
+    ctx.setFillColor(new Color('#' + c.map((v) => v.toString(16).padStart(2, '0')).join('')))
+    ctx.fillRect(new Rect(0, Math.floor((H * i) / bands), W, Math.ceil(H / bands) + 1))
+  }
+  // nébuleuse douce (dégradé radial simulé)
+  const gx = W * (0.15 + ((hr % 24) / 24) * 0.7), gy = H * 0.95
+  for (let r = Math.max(W, H) * 0.7; r > 10; r -= Math.max(W, H) * 0.035) {
+    ctx.setFillColor(new Color(sky.glow, sky.ga * 0.09))
+    ctx.fillEllipse(new Rect(gx - r, gy - r * 0.6, 2 * r, 1.2 * r))
+  }
 
   // étoiles
   let seed = 7
@@ -124,7 +147,7 @@ function addStars(w, family) {
   const n = Math.round((W * H) / (S * S * 900))
   for (let i = 0; i < n; i++) {
     const r = (rnd() < 0.9 ? 0.8 : 1.5) * S
-    ctx.setFillColor(new Color('#dfe5ff', 0.12 + rnd() * 0.5))
+    ctx.setFillColor(new Color('#dfe5ff', (0.12 + rnd() * 0.5) * sky.stars))
     ctx.fillEllipse(new Rect(rnd() * W, rnd() * H, r, r))
   }
 
@@ -183,6 +206,29 @@ function addStars(w, family) {
 
   w.backgroundImage = ctx.getImage()
 }
+// Anneau de progression du jour. Rouge avec halo s'il y a du retard.
+function ringImage(progress, label, size, alert, plain) {
+  const S = 3, D = size * S
+  const ctx = new DrawContext()
+  ctx.size = new Size(D, D); ctx.opaque = false; ctx.respectScreenScale = false
+  const c = D / 2, r = D * 0.36, lw = D * 0.085
+  const color = alert ? '#ff6b6b' : progress >= 1 ? '#6fe0b8' : '#8ea2ff'
+  const dotAt = (a, rad, col, al) => { ctx.setFillColor(new Color(col, al)); ctx.fillEllipse(new Rect(c + r * Math.cos(a) - rad, c + r * Math.sin(a) - rad, 2 * rad, 2 * rad)) }
+  // halo
+  if (!plain) for (let i = 0; i < 6; i++) { ctx.setStrokeColor(new Color(color, alert ? 0.07 : 0.045)); ctx.setLineWidth(lw + i * D * 0.035); const p = new Path(); p.addEllipse(new Rect(c - r, c - r, 2 * r, 2 * r)); ctx.addPath(p); ctx.strokePath() }
+  // piste
+  ctx.setStrokeColor(new Color(plain ? '#ffffff' : '#ffffff', plain ? 0.3 : 0.12)); ctx.setLineWidth(lw)
+  const track = new Path(); track.addEllipse(new Rect(c - r, c - r, 2 * r, 2 * r)); ctx.addPath(track); ctx.strokePath()
+  // arc (points serrés = trait arrondi)
+  const steps = 240, end = Math.max(0.0001, Math.min(1, progress))
+  for (let i = 0; i <= steps * end; i++) dotAt(-Math.PI / 2 + (i / steps) * 2 * Math.PI, lw / 2, plain ? '#ffffff' : color, 1)
+  if (progress > 0 && !plain) dotAt(-Math.PI / 2 + end * 2 * Math.PI, lw * 0.9, '#ffffff', 0.9)
+  // texte au centre
+  ctx.setTextAlignedCenter(); ctx.setFont(Font.boldRoundedSystemFont(D * 0.26)); ctx.setTextColor(plain ? Color.white() : new Color('#e8ecff'))
+  ctx.drawTextInRect(label, new Rect(0, c - D * 0.17, D, D * 0.34))
+  return ctx.getImage()
+}
+
 function txt(stack, text, opts = {}) {
   const t = stack.addText(text)
   t.font = opts.font || Font.systemFont(13)
@@ -291,20 +337,27 @@ async function allWidget(w, family) {
     stack.addSpacer(4)
   }
   if (family === 'small') {
-    header(w, 'PRIORITÉS', inbox.length ? `✉ ${inbox.length}` : '', C.gold)
+    const h = w.addStack(); h.centerAlignContent()
+    txt(h, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute }); h.addSpacer()
+    const im = h.addImage(ringImage(d.progress, `${d.doneToday}/${d.total}`, 34, d.overdue.length > 0)); im.imageSize = new Size(34, 34)
+    w.addSpacer(6)
     list.slice(0, 3).forEach((t, i) => prioRow(w, t, i, 12))
     if (!list.length) txt(w, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
     return
   }
   if (family === 'medium') {
     // haut : priorités sur toute la largeur — bas : 2 cartes Inbox | Note
-    const top = w.addStack(); top.layoutVertically()
-    const th = top.addStack(); th.centerAlignContent()
-    txt(th, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute }); th.addSpacer()
-    txt(th, `${d.today.length} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length} en retard` : ''}`, { font: Font.mediumSystemFont(10), color: d.overdue.length ? C.warn : C.mute })
+    const head = w.addStack(); head.centerAlignContent()
+    const top = head.addStack(); top.layoutVertically()
+    txt(top, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute })
     top.addSpacer(4)
     list.slice(0, 2).forEach((t, i) => prioRow(top, t, i, 14))
     if (!list.length) txt(top, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(13) })
+    head.addSpacer()
+    const ringBox = head.addStack(); ringBox.layoutVertically(); ringBox.centerAlignContent()
+    const img = ringBox.addImage(ringImage(d.progress, `${d.doneToday}/${d.total}`, 54, d.overdue.length > 0))
+    img.imageSize = new Size(54, 54)
+    if (d.overdue.length) { const o = ringBox.addText(`${d.overdue.length} en retard`); o.font = Font.mediumSystemFont(9); o.textColor = C.warn; o.centerAlignText() }
     w.addSpacer()
     const row = w.addStack()
     const card = (title, body, color, url) => {
@@ -325,7 +378,13 @@ async function allWidget(w, family) {
     return
   }
   // large : 3 sections
-  header(w, 'MES 3 PRIORITÉS', d.overdue.length ? `${d.overdue.length} en retard` : `${d.today.length} aujourd’hui`, d.overdue.length ? C.warn : C.mute)
+  const lh = w.addStack(); lh.centerAlignContent()
+  const lt = lh.addStack(); lt.layoutVertically()
+  txt(lt, 'MES 3 PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute })
+  txt(lt, d.overdue.length ? `${d.overdue.length} en retard` : `${d.today.length} restante${d.today.length > 1 ? 's' : ''} aujourd’hui`, { font: Font.mediumSystemFont(11), color: d.overdue.length ? C.warn : C.mute })
+  lh.addSpacer()
+  const li = lh.addImage(ringImage(d.progress, `${d.doneToday}/${d.total}`, 50, d.overdue.length > 0)); li.imageSize = new Size(50, 50)
+  w.addSpacer(6)
   list.slice(0, 3).forEach((t, i) => prioRow(w, t, i, 14))
   if (!list.length) txt(w, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
   w.addSpacer(8)
@@ -394,6 +453,32 @@ if (mode === 'capture') {
   Script.complete()
 } else {
   const w = new ListWidget()
+  const fam = config.widgetFamily || 'medium'
+  if (fam.startsWith('accessory')) {
+    // ───── Écran verrouillé ─────
+    w.url = APP_URL
+    try {
+      const d = await loadTasks()
+      const first = (d.top.find((t) => !t.done) || d.today[0])
+      if (fam === 'accessoryCircular') {
+        w.addAccessoryWidgetBackground = true
+        const im = w.addImage(ringImage(d.progress, `${d.today.length}`, 64, false, true)); im.imageSize = new Size(64, 64); im.centerAlignImage()
+      } else if (fam === 'accessoryRectangular') {
+        const h = w.addStack(); h.centerAlignContent()
+        const im = h.addImage(ringImage(d.progress, '', 18, false, true)); im.imageSize = new Size(18, 18)
+        h.addSpacer(4)
+        const t = h.addText(`${d.doneToday}/${d.total} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length}⚠︎` : ''}`); t.font = Font.semiboldSystemFont(12)
+        w.addSpacer(2)
+        const a = w.addText(first ? `01 ${first.title}` : 'Rien de prévu'); a.font = Font.boldSystemFont(14); a.lineLimit = 1
+        const second = (d.top.length ? d.top : d.today).filter((x) => x !== first && !x.done)[0]
+        if (second) { const b = w.addText(`02 ${second.title}`); b.font = Font.systemFont(12); b.lineLimit = 1; b.textOpacity = 0.75 }
+      } else {
+        const t = w.addText(`◉ ${d.doneToday}/${d.total}${first ? ' · ' + first.title : ''}`); t.font = Font.systemFont(12)
+      }
+    } catch (e) { const t = w.addText('Orbite · connexion'); t.font = Font.systemFont(11) }
+    Script.setWidget(w)
+    Script.complete()
+  } else {
   addStars(w, config.widgetFamily || 'medium')
   w.setPadding(14, 15, 13, 15)
   w.refreshAfterDate = new Date(Date.now() + 5 * 60 * 1000)
@@ -410,5 +495,6 @@ if (mode === 'capture') {
   if (config.runsInWidget) Script.setWidget(w)
   else await w.presentMedium()
   Script.complete()
+  }
 }
 }

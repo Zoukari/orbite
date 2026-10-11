@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useData, useUI, resolve, ancestors, displayTitle, progressOf, relationCounts, relatedEntities, relatedTasks, uid, descendants } from '../lib/store'
-import { TYPE_META, PALETTE, ICONS } from '../lib/meta'
+import { TYPE_META } from '../lib/meta'
+import { LookPicker } from './LookPicker'
 import { fmtDay, fmtRelative, recurrenceLabel, DAY_NAMES, today } from '../lib/dates'
 import { Markdown, toggleCheckboxLine } from '../lib/markdown'
 import { Icon, Info, ProgressBar, PriorityBadge, Segmented, TypeGlyph, Toggle, useIsMobile } from './ui'
@@ -46,6 +47,7 @@ export function DetailPanel() {
 function Header({ e, raw, onClose }: { e: Entity; raw: Entity; onClose: () => void }) {
   const ents = useData((s) => s.entities)
   const [title, setTitle] = useState(e.title)
+  const [look, setLook] = useState(false)
   useEffect(() => setTitle(e.title), [e.id, e.title])
   const path = ancestors(ents, raw.id)
   const map = raw.mapId ? ents[raw.mapId] : undefined
@@ -71,7 +73,12 @@ function Header({ e, raw, onClose }: { e: Entity; raw: Entity; onClose: () => vo
           <button className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition" style={{ borderColor: e.done ? '#6fe0b8' : 'rgb(var(--line))', background: e.done ? '#6fe0b8' : '' }} onClick={() => useData.getState().toggleDone(e.id)}>
             {e.done && <Icon name="check" className="h-3.5 w-3.5 text-bg" stroke={2.6} />}
           </button>
-        ) : <TypeGlyph e={e} size="lg" />}
+        ) : (
+          <button className="relative shrink-0" title="Emoji et couleur" onClick={() => setLook(!look)}>
+            <TypeGlyph e={e} size="lg" />
+            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-line bg-surface text-[9px] text-mute">✎</span>
+          </button>
+        )}
         <textarea
           rows={1}
           className={`min-w-0 flex-1 resize-none bg-transparent font-display text-xl font-semibold leading-tight outline-none placeholder:text-mute/50 ${e.done ? 'text-mute line-through' : ''}`}
@@ -83,6 +90,7 @@ function Header({ e, raw, onClose }: { e: Entity; raw: Entity; onClose: () => vo
           style={{ fieldSizing: 'content' } as any}
         />
       </div>
+      {look && <div className="fade mt-3 rounded-2xl border border-line/60 bg-raised/40 p-3"><LookPicker e={e} onClose={() => setLook(false)} /></div>}
       {raw.type === 'ref' && (
         <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent">
           ⇢ Référence <Info text={`Tu modifies l’original « ${e.title} » : le changement apparaît partout où il est placé.`} />
@@ -196,7 +204,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
 
       {/* Détails secondaires (progressive disclosure) */}
       <button className="flex w-full items-center gap-2 text-xs font-medium text-mute hover:text-ink" onClick={() => setMore(!more)}>
-        <Icon name="chevron" className={`h-3.5 w-3.5 transition ${more ? 'rotate-90' : ''}`} /> {more ? 'Moins' : 'Plus'}
+        <Icon name="chevron" className={`h-3.5 w-3.5 transition ${more ? 'rotate-90' : ''}`} /> {more ? 'Moins' : 'Plus (tags, historique, commentaires)'}
       </button>
       {more && (
         <div className="space-y-5">
@@ -205,17 +213,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
               <input type="date" className="input" value={e.deadline || ''} onChange={(ev) => up({ deadline: ev.target.value || null })} />
             </Field>
           )}
-          <Field label="Couleur">
-            <div className="flex flex-wrap gap-1.5">
-              {PALETTE.map((c) => <button key={c} onClick={() => up({ color: c })} className="h-6 w-6 rounded-full border-2 transition" style={{ background: c, borderColor: e.color === c ? 'rgb(var(--ink))' : 'transparent' }} />)}
-              <button className="chip" onClick={() => up({ color: undefined })}>par défaut</button>
-            </div>
-          </Field>
-          <Field label="Icône">
-            <div className="flex flex-wrap gap-1">
-              {ICONS.map((i) => <button key={i} onClick={() => up({ icon: e.icon === i ? undefined : i })} className={`h-8 w-8 rounded-lg text-sm transition ${e.icon === i ? 'bg-accent/20' : 'hover:bg-ink/5'}`}>{i}</button>)}
-            </div>
-          </Field>
+          <LookPicker e={e} />
           <Tags e={e} />
           <Comments e={e} />
           <History e={e} />

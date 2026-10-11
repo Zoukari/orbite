@@ -54,9 +54,28 @@ export const EDGE_META: Record<EdgeKind, { label: string; dash?: string; color: 
   reference: { label: 'référence', dash: '1 4', color: '#a78bff' }
 }
 
-export const PALETTE = ['#8ea2ff', '#7aa7ff', '#6fe0b8', '#9ee6a8', '#ffd479', '#f2b45a', '#ff9f9f', '#ffb3c7', '#d6c6ff', '#7fd3ff', '#c8cde0']
+export const PALETTE = [
+  // froids
+  '#8ea2ff', '#7aa7ff', '#5b8cff', '#7fd3ff', '#4fd1e8', '#38bdb0',
+  // verts
+  '#6fe0b8', '#9ee6a8', '#5fd17a', '#b5e06f',
+  // chauds
+  '#ffd479', '#f2b45a', '#ff9f5a', '#ff7a59', '#ff6b6b', '#ff9f9f',
+  // roses / violets
+  '#ff7ab6', '#ffb3c7', '#e08cff', '#b18cff', '#d6c6ff', '#9a7bff',
+  // neutres
+  '#c8cde0', '#8a90a6', '#e8ecff', '#c9a97a'
+]
 
-export const ICONS = ['◎', '▣', '◉', '✦', '◆', '✧', '⌂', '✈', '₿', '€', '♥', '✎', '⚑', '☼', '☾', '♫', '⚙', '⌘', '☕', '🍔', '📦', '🎮', '🇨🇦', '🏠', '🎓', '💼', '💰', '🚗', '🏋️', '📚']
+export const ICON_GROUPS: { label: string; icons: string[] }[] = [
+  { label: 'Business', icons: ['💼', '🏢', '📈', '📊', '💰', '💵', '💳', '🧾', '🤝', '📦', '🚚', '✈️', '🛒', '🏷️', '📣', '🎯', '🚀', '⚙️', '🧠', '💡', '🖥️', '📱', '🌐', '🛠️'] },
+  { label: 'Food & lieux', icons: ['🍔', '🌮', '🌯', '🍟', '🍕', '☕', '🥤', '🍽️', '🏪', '🏠', '🏡', '🏗️', '🏙️', '🕌', '🏝️', '🗺️'] },
+  { label: 'Pays', icons: ['🇩🇯', '🇨🇦', '🇫🇷', '🇧🇪', '🇺🇸', '🇸🇦', '🇦🇪', '🇪🇹', '🇰🇪', '🇲🇦', '🇹🇷', '🇬🇧', '🌍', '🌎'] },
+  { label: 'Perso', icons: ['❤️', '👨‍👩‍👧', '👤', '🎓', '📚', '✍️', '🏋️', '🏃', '⚽', '🎮', '🎧', '🎬', '📷', '🧘', '🩺', '🤲', '🌙', '⭐', '🌱', '🐪'] },
+  { label: 'Objectifs', icons: ['🎯', '🏆', '🥇', '🔥', '⚡', '💎', '🧭', '📍', '🗓️', '⏳', '✅', '🚩', '🔑', '🛡️', '🌟', '🪐'] },
+  { label: 'Symboles', icons: ['◎', '▣', '◉', '✦', '◆', '✧', '⌂', '✈', '€', '♥', '✎', '⚑', '☼', '☾', '♫', '⌘', '◐', '◇'] }
+]
+export const ICONS = ICON_GROUPS.flatMap((g) => g.icons)
 
 export function childType(t: EntityType): EntityType {
   if (t === 'vision' || t === 'category') return 'category'
