@@ -44,7 +44,8 @@ function Main() {
     const deepLink = () => {
       const h = location.hash.replace('#', '')
       const views: Record<string, ViewId> = { notes: 'notes', inbox: 'inbox', taches: 'tasks', projets: 'tasks', map: 'map', accueil: 'home' }
-      if (views[h]) useUI.getState().go(views[h])
+      if (h === 'widget' || h === 'reglages') { useUI.getState().go('settings'); setTimeout(() => document.getElementById('widget-card')?.scrollIntoView({ behavior: 'smooth' }), 400) }
+      else if (views[h]) useUI.getState().go(views[h])
       else if (h === 'capture') useUI.getState().set({ capture: { open: true } })
       else return
       history.replaceState(null, '', location.pathname)

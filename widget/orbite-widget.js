@@ -135,10 +135,12 @@ function header(w, title, right, rightColor) {
   if (right) txt(h, right, { font: Font.mediumSystemFont(10), color: rightColor || C.mute })
   w.addSpacer(8)
 }
-function errorWidget(w) {
+function errorWidget(w, e) {
+  w.url = APP_URL + '/#widget'
   txt(w, 'Orbite', { font: Font.boldSystemFont(15) })
   w.addSpacer(6)
-  txt(w, 'Ouvre Scriptable et lance le script pour te connecter.', { color: C.mute, font: Font.systemFont(11), lines: 3 })
+  txt(w, 'Touche ici → Réglages → « Connecter le widget ».', { color: C.mute, font: Font.systemFont(12), lines: 3 })
+  if (e) { w.addSpacer(4); txt(w, String(e.message || e), { color: C.warn, font: Font.systemFont(9), lines: 2 }) }
 }
 
 // ───────── Widgets ─────────
@@ -307,6 +309,19 @@ async function capture() {
 // ───────── Entrée ─────────
 const mode = ((args.queryParameters && args.queryParameters.mode) || args.widgetParameter || 'tout').toString().trim().toLowerCase()
 
+// Connexion envoyée par la webapp (Réglages → Connecter le widget)
+if (mode === 'setup' && args.queryParameters.email && args.queryParameters.k) {
+  Keychain.set(KC_EMAIL, args.queryParameters.email)
+  Keychain.set(KC_PASS, args.queryParameters.k)
+  try {
+    await login()
+    const a = new Alert(); a.title = 'Widget connecté ✓'; a.message = 'Tu peux revenir à l’écran d’accueil.'; a.addAction('OK'); await a.present()
+  } catch (e) {
+    const a = new Alert(); a.title = 'Connexion refusée'; a.message = String(e.message || e); a.addAction('OK'); await a.present()
+  }
+  Script.complete()
+} else {
+
 if (config.runsInApp && (!Keychain.contains(KC_EMAIL) || !Keychain.contains(KC_PASS) || mode === 'login')) {
   await askCredentials()
 }
@@ -326,10 +341,11 @@ if (mode === 'capture') {
     else if (mode.startsWith('tache') || mode.startsWith('tâche')) await tasksWidget(w, family)
     else await allWidget(w, family)
   } catch (e) {
-    errorWidget(w)
+    errorWidget(w, e)
   }
   if (family !== 'medium') w.addSpacer()
   if (config.runsInWidget) Script.setWidget(w)
   else await w.presentMedium()
   Script.complete()
+}
 }

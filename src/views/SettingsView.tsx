@@ -4,7 +4,7 @@ import { exportAll, exportTasksCsv, importBackup } from '../lib/backup'
 import { removeDemo } from '../lib/demo'
 import { fmtRelative } from '../lib/dates'
 import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, PALETTE } from '../lib/meta'
-import { supabase, useSync, signOut, syncNow, setPin } from '../lib/sync'
+import { supabase, useSync, signOut, syncNow, setPin, signInPin, pinPassword } from '../lib/sync'
 import { PinLogin, PinInput } from '../components/PinLogin'
 import { Page } from './ListViews'
 import { Segmented, Toggle, Icon, Info } from '../components/ui'
@@ -39,6 +39,10 @@ export function SettingsView() {
         </Card>
 
         <CloudCard />
+
+        <div id="widget-card"><Card title="Widget iPhone" info="Installe l’app Scriptable, crée un script nommé « Orbite » avec le code du widget, puis touche le bouton ci-dessous depuis l’iPhone.">
+          <ConnectWidget />
+        </Card></div>
 
         <Card title="Apparence">
           <Row label="Animations flottantes" hint="Coupées automatiquement au-delà de 140 éléments visibles"><Toggle on={s.animations} onChange={(v) => set({ animations: v })} /></Row>
@@ -124,6 +128,38 @@ function CloudCard() {
     <Card title="Synchronisation cloud" info="Sauvegarde automatique et mêmes données sur iPhone et ordinateur. Accès réservé à ton compte.">
       <div className="mx-auto max-w-xs"><PinLogin /></div>
     </Card>
+  )
+}
+
+// Connecte le widget Scriptable en un tap : vérifie le PIN puis ouvre Scriptable avec les identifiants
+function ConnectWidget() {
+  const { session } = useSync()
+  const [pin, setP] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (!session) return <p className="text-sm text-mute">Connecte-toi d’abord à la synchronisation (ci-dessus).</p>
+  const email = session.user.email || ''
+  const go = async (p: string) => {
+    setBusy(true); setMsg(null)
+    try {
+      await signInPin(email, p) // vérifie que le PIN est le bon
+      const url = `scriptable:///run/Orbite?mode=setup&email=${encodeURIComponent(email)}&k=${encodeURIComponent(pinPassword(p))}`
+      setP('')
+      location.href = url
+      setMsg('Scriptable va s’ouvrir. Si rien ne se passe, vérifie que le script s’appelle exactement « Orbite ».')
+    } catch (e: any) {
+      setMsg(e.message === 'Invalid login credentials' ? 'PIN incorrect. Si tu n’as pas encore de PIN, utilise « Définir mon PIN » ci-dessus.' : e.message)
+      setP('')
+    }
+    setBusy(false)
+  }
+  return (
+    <div className="mx-auto max-w-xs space-y-3">
+      <div className="text-center text-[13px] font-medium">Entre ton PIN pour connecter le widget</div>
+      <PinInput value={pin} onChange={setP} onDone={go} />
+      <button className="btn-primary w-full" disabled={busy || pin.length !== 6} onClick={() => go(pin)}>{busy ? '…' : 'Connecter le widget'}</button>
+      {msg && <div className="text-center text-xs text-mute">{msg}</div>}
+    </div>
   )
 }
 
