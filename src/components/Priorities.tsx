@@ -12,13 +12,15 @@ export function TopThree({ large }: { large?: boolean }) {
   const [pick, setPick] = useState(false)
   const items = ids.map((i) => ents[i]).filter(Boolean)
   const remove = (id: string) => { const s = useData.getState(); s.setSettings({ dailyTop: { date: today(), ids: s.settings.dailyTop.ids.filter((x) => x !== id) } }) }
+  const anim = useData((s) => s.settings.animations)
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
+    <div className={`beam rounded-[22px] bg-surface/40 p-3 ${anim ? '' : 'no-anim'}`}>
+      <span className="beam-bg" />
+      <div className="mb-2 flex items-center justify-between px-0.5">
         <div className="section-title">Mes 3 priorités</div>
         {items.length < 3 && <button className="text-[11px] font-medium text-accent" onClick={() => setPick(true)}>Choisir</button>}
       </div>
-      <div className="space-y-1.5">
+      <div className="relative space-y-1.5">
         {[0, 1, 2].map((i) => {
           const t = items[i]
           const p = t && prios.find((x) => x.level === t.priority)

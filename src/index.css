@@ -145,3 +145,19 @@ button { -webkit-user-select: none; user-select: none; }
 
 .prio-5 { box-shadow: 0 0 0 1px rgba(255,107,107,.35), 0 0 18px -4px rgba(255,107,107,.45); }
 .prio-4 { box-shadow: 0 0 0 1px rgba(242,180,90,.30), 0 0 14px -5px rgba(242,180,90,.35); }
+
+/* ═════════ Faisceau lumineux qui tourne autour des bords ═════════ */
+@property --beam { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+@keyframes beam-spin { to { --beam: 360deg; } }
+.beam { position: relative; isolation: isolate; }
+.beam::before, .beam::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; padding: 2px; pointer-events: none;
+  background: conic-gradient(from var(--beam), transparent 0deg, transparent 230deg, rgba(150, 170, 255, 0.25) 290deg, rgba(220, 228, 255, 0.85) 335deg, #fff 352deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: beam-spin 5s linear infinite;
+}
+.beam::after { inset: -3px; padding: 4px; filter: blur(7px); opacity: 0.85; }
+.beam-bg { position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgba(201, 211, 255, 0.10); pointer-events: none; }
+.no-anim .beam::before, .no-anim .beam::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .beam::before, .beam::after { animation: none; } }
