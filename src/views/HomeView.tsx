@@ -24,6 +24,7 @@ export function HomeView() {
     return { doneRecent, milestonesDone, projects, objectives, nextMilestones, todayT, overdue, tasks }
   }, [ents])
   const hour = new Date().getHours()
+  const name = useData((s) => s.settings.userName?.trim())
   const hello = hour < 5 ? 'Bonne nuit' : hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir'
   const doneWeek = d.tasks.filter((x) => x.done && x.doneAt && Date.now() - new Date(x.doneAt).getTime() < 7 * 86400000).length
 
@@ -31,7 +32,7 @@ export function HomeView() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-5 pb-28 pt-safe md:px-10 md:pb-12">
         <div className="text-sm text-mute">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight md:text-4xl">{hello}.</h1>
+        <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight md:text-4xl">{hello}{name ? `, ${name}` : ''}.</h1>
         <div className="mt-3 max-w-xl"><QuoteLine /></div>
 
         <div className="mt-6 flex flex-wrap gap-2">

@@ -77,9 +77,13 @@ export const ICON_GROUPS: { label: string; icons: string[] }[] = [
 ]
 export const ICONS = ICON_GROUPS.flatMap((g) => g.icons)
 
+// Hiérarchie : Projet → Sous-projet → Vision → Objectif → Jalon → Tâche (→ sous-tâche)
 export function childType(t: EntityType): EntityType {
-  if (t === 'vision' || t === 'category') return 'category'
+  if (t === 'category') return 'project'
   if (t === 'project') return 'subproject'
-  if (t === 'subproject' || t === 'objective' || t === 'task') return 'task'
+  if (t === 'subproject') return 'objective'
+  if (t === 'vision') return 'objective'
+  if (t === 'objective') return 'milestone'
+  if (t === 'milestone' || t === 'task') return 'task'
   return 'idea'
 }

@@ -147,6 +147,7 @@ export interface Settings {
   recents: string[]
   rightPanel: boolean
   lastRolloverDate?: string
+  userName?: string
 }
 
 export type ViewId =

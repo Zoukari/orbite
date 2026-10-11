@@ -405,7 +405,7 @@ function EdgeMenu({ id, x, y, onClose }: { id: string; x: number; y: number; onC
   )
 }
 
-const MAIN_TYPES: EntityType[] = ['idea', 'task', 'project', 'objective', 'note', 'milestone']
+const MAIN_TYPES: EntityType[] = ['project', 'subproject', 'vision', 'objective', 'milestone', 'task', 'idea', 'note']
 
 export function AddMenu({ x, y, onClose, onPick }: { x: number; y: number; onClose: () => void; onPick: (t: EntityType) => void }) {
   const mobile = useIsMobile()

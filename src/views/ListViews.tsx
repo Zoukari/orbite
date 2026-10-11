@@ -6,7 +6,7 @@ import { exportTasksCsv } from '../lib/backup'
 import { plainExcerpt } from '../lib/markdown'
 import { TYPE_META } from '../lib/meta'
 import { TaskRow } from '../components/TaskRow'
-import { ProjectTree } from '../components/ProjectTree'
+import { ProjectTree, DoneList } from '../components/ProjectTree'
 import { TopThree } from '../components/Priorities'
 const NotesBoard = lazy(() => import('./NotesBoard').then((m) => ({ default: m.NotesBoard })))
 import { Empty, Icon, Info, ProgressBar, StatusPill, TypeGlyph, Segmented } from '../components/ui'
@@ -31,15 +31,26 @@ export function Page({ title, sub, actions, children }: { title: string; sub?: R
 
 // ───────── Tâches : panneau dédié, organisé par horizon temporel ─────────
 export function TasksView() {
-  const [mode, setMode] = useState<'projects' | 'dates'>(() => { try { return (localStorage.getItem('orbite.tasksMode') as any) || 'projects' } catch { return 'projects' } })
-  const setM = (m: 'projects' | 'dates') => { setMode(m); try { localStorage.setItem('orbite.tasksMode', m) } catch {} }
+  type M = 'projects' | 'done' | 'dates'
+  const [mode, setMode] = useState<M>(() => { try { return (localStorage.getItem('orbite.tasksMode') as M) || 'projects' } catch { return 'projects' } })
+  const setM = (m: M) => { setMode(m); try { localStorage.setItem('orbite.tasksMode', m) } catch {} }
   const [doneToo, setDoneToo] = useState(false)
-  const toggle = <Segmented value={mode} onChange={setM} options={[{ value: 'projects', label: 'Arborescence' }, { value: 'dates', label: 'Par date' }]} />
+  const toggle = <Segmented value={mode} onChange={setM} options={[{ value: 'projects', label: 'Plan' }, { value: 'done', label: 'Terminés' }, { value: 'dates', label: 'Dates' }]} />
+  const reclass = <button className="btn-ghost text-xs" onClick={() => useUI.getState().set({ reclass: true })} title="Reclasser mes éléments">⇅ Reclasser</button>
   if (mode === 'projects')
     return (
-      <Page title="Projets" actions={<>{toggle}<button className={`btn-ghost text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? 'Masquer faites' : 'Voir faites'}</button></>}>
+      <Page title="Projets" actions={<>{toggle}<button className={`btn-ghost text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? 'Masquer faites' : 'Voir faites'}</button>{reclass}</>}>
+        <div className="mb-3 flex items-center gap-1.5 overflow-x-auto px-1 text-[11px] text-mute no-scrollbar">
+          {['Projet', 'Sous-projet', 'Vision', 'Objectif', 'Jalon', 'Tâche'].map((l, i) => <span key={l} className="flex shrink-0 items-center gap-1.5">{i > 0 && <span className="opacity-50">→</span>}{l}</span>)}
+        </div>
         <div className="mb-5"><TopThree /></div>
         <ProjectTree showDone={doneToo} />
+      </Page>
+    )
+  if (mode === 'done')
+    return (
+      <Page title="Terminés" actions={toggle}>
+        <DoneList />
       </Page>
     )
   return <TasksByDate toggle={toggle} />

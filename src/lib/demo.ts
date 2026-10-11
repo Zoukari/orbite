@@ -35,6 +35,20 @@ export function seedDemo() {
   const objPerso = mk('objective', 'Objectifs personnels', perso, { progressMode: 'manual', progress: 40 })
   mk('milestone', 'MBA terminé', objPerso, { status: 'done', done: true, date: addDays(t, -200) })
 
+  // Exemple complet de la hiérarchie
+  const vie = mk('project', 'Vie personnelle', perso, { status: 'doing', icon: '❤️', color: '#ff7ab6' })
+  const fp = mk('subproject', 'Finances personnelles', vie, { status: 'doing', icon: '💰', color: '#f2b45a' })
+  const vis = mk('vision', 'Devenir financièrement indépendant', fp, { icon: '🌟' })
+  const obj = mk('objective', 'Atteindre 1 000 000 FDJ de revenus mensuels', vis, { deadline: addDays(t, 540) })
+  mk('milestone', 'Atteindre 250 000 FDJ/mois', obj, { done: true, status: 'done', doneAt: new Date(Date.now() - 40 * 86400000).toISOString() })
+  const j2 = mk('milestone', 'Atteindre 500 000 FDJ/mois', obj, { date: addDays(t, 90) })
+  mk('milestone', 'Atteindre 750 000 FDJ/mois', obj, { date: addDays(t, 270) })
+  mk('milestone', 'Atteindre 1 000 000 FDJ/mois', obj, { date: addDays(t, 540) })
+  mk('task', 'Préparer une nouvelle offre commerciale', j2, { date: addDays(t, 3), priority: 3 })
+  mk('task', 'Prospecter 10 nouveaux clients', j2, { date: addDays(t, 7), priority: 4 })
+  mk('task', 'Lancer une campagne marketing', j2, { date: addDays(t, 14) })
+  mk('task', 'Signer 3 nouveaux contrats', j2, { date: addDays(t, 30) })
+
   const canada = mk('category', 'Canada', root, { color: '#ff9f9f', icon: '🇨🇦' })
   const immig = mk('project', 'Immigration', canada, { status: 'doing' })
   const visa = mk('objective', 'Obtenir le visa', immig, { status: 'doing' })

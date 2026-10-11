@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { useData, useUI } from './lib/store'
+import { useData, useUI, onMilestoneReached } from './lib/store'
 import { initSync, useSync } from './lib/sync'
 import { PinLogin } from './components/PinLogin'
 import { TYPE_META } from './lib/meta'
 import { Icon, Modal, useIsMobile } from './components/ui'
 import { DetailPanel } from './components/DetailPanel'
+import { ReclassWizard } from './components/ReclassWizard'
 import { ContextMenu } from './components/ContextMenu'
 import { AddToModal } from './components/AddToModal'
 import { CommandPalette } from './components/CommandPalette'
@@ -40,6 +41,7 @@ function Main() {
       }
     })
     initSync()
+    onMilestoneReached((t) => useUI.getState().notify(`◆ Jalon atteint : ${t}`))
     // liens profonds (widgets iPhone) : /#notes, /#inbox, /#taches, /#capture
     const deepLink = () => {
       const h = location.hash.replace('#', '')
@@ -163,6 +165,7 @@ function Shell() {
       <DropAsk />
       <ShareDialog />
       <FocusOverlay />
+      <ReclassWizard />
       <Toast />
     </div>
   )

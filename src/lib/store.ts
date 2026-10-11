@@ -32,6 +32,8 @@ export const onLocalChange = (fn: Listener) => {
 }
 const emitChange = () => changeListeners.forEach((f) => f())
 let initOnce: Promise<void> | null = null
+let milestoneHook: ((title: string) => void) | null = null
+export const onMilestoneReached = (fn: (title: string) => void) => { milestoneHook = fn }
 
 interface DataState {
   ready: boolean
@@ -246,6 +248,15 @@ export const useData = create<DataState>((set, get) => ({
       { done, doneAt: done ? new Date().toISOString() : null, status: done ? 'done' : e.status === 'done' ? 'todo' : e.status },
       { action: done ? 'done' : 'reopened' }
     )
+    // dernière tâche d'un jalon cochée → jalon atteint
+    const parent = e.parentId ? get().entities[e.parentId] : undefined
+    if (done && parent?.type === 'milestone' && !parent.done) {
+      const siblings = Object.values(get().entities).filter((x) => x.parentId === parent.id && x.type === 'task' && !x.archived)
+      if (siblings.length && siblings.every((x) => x.done)) {
+        get().update(parent.id, { done: true, status: 'done', doneAt: new Date().toISOString() }, { action: 'done', detail: 'toutes les tâches' })
+        milestoneHook?.(parent.title)
+      }
+    }
   },
 
   moveUnder(id, parentId, mapId) {
@@ -508,7 +519,19 @@ export function progressOf(ents: Record<string, Entity>, e: Entity): number | nu
   if (e.progressMode === 'manual') return Math.round(e.progress ?? 0)
   if (e.type === 'task') return e.done ? 100 : e.checklist?.length ? Math.round((e.checklist.filter((c) => c.done).length / e.checklist.length) * 100) : null
   if (e.type === 'checklist') return e.checklist?.length ? Math.round((e.checklist.filter((c) => c.done).length / e.checklist.length) * 100) : null
+  if (e.type === 'milestone') {
+    if (e.done) return 100
+    const kids = Object.values(ents).filter((x) => x.parentId === e.id && x.type === 'task' && !x.archived)
+    return kids.length ? Math.round((kids.filter((t) => t.done).length / kids.length) * 100) : 0
+  }
   if (!['project', 'subproject', 'objective', 'category', 'vision'].includes(e.type)) return null
+  if (e.done && (e.type === 'vision' || e.type === 'objective')) return 100
+  // objectif → moyenne de ses jalons ; vision → moyenne de ses objectifs
+  const sub = e.type === 'objective' ? 'milestone' : e.type === 'vision' ? 'objective' : null
+  if (sub) {
+    const kids = Object.values(ents).filter((x) => x.parentId === e.id && x.type === sub && !x.archived)
+    if (kids.length) return Math.round(kids.reduce((n, k) => n + (progressOf(ents, k) ?? 0), 0) / kids.length)
+  }
   const tasks = relatedTasks(ents, e.id)
   if (!tasks.length) return e.status === 'done' ? 100 : null
   return Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100)
@@ -542,6 +565,7 @@ interface UIState {
   toast: string | null
   linkFilter: { id: string; kind: string } | null
   share: string | null
+  reclass: boolean
   set(p: Partial<UIState>): void
   go(v: ViewId): void
   open(id: string): void
@@ -563,6 +587,7 @@ export const useUI = create<UIState>((set) => ({
   toast: null,
   linkFilter: null,
   share: null,
+  reclass: false,
   set: (p) => set(p),
   go: (view) => set({ view, menu: null }),
   open: (id) => {

@@ -1,101 +1,53 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { useData, useUI, relatedTasks, ancestors, descendants, progressOf, placeChild } from '../lib/store'
+import { useData, useUI, progressOf, placeChild, ancestors } from '../lib/store'
 import { fmtDay } from '../lib/dates'
+import { TYPE_META } from '../lib/meta'
 import { TaskRow } from './TaskRow'
 import { Icon, ProgressBar } from './ui'
-import type { Entity } from '../lib/types'
+import type { Entity, EntityType } from '../lib/types'
 
-// Hiérarchie unique : Catégorie → Projet → Objectif → Tâches & Jalons.
-// Réutilisée dans la page « Projets » et dans la sidebar droite de la Map.
+// ─────────────────────────────────────────────────────────────
+// Hiérarchie : Projet → Sous-projet → Vision → Objectif → Jalon → Tâche
+// Chaque élément est rangé sous son « parent de plan » : le parent direct
+// s'il fait partie du plan, sinon le premier lien (objectif / projet).
+// ─────────────────────────────────────────────────────────────
 
-interface Group { obj: Entity | null; items: Entity[] } // obj null = « Sans objectif »
-// Un conteneur = projet ou catégorie. Ils peuvent s'imbriquer à l'infini
-// (ex. Personnel → Canada → Logement) : on les affiche les uns dans les autres.
-interface Card { e: Entity; cards: Card[]; groups: Group[] }
-interface Section { cat: Entity | null; cards: Card[]; groups: Group[] }
+export const PLAN_TYPES: EntityType[] = ['category', 'project', 'subproject', 'vision', 'objective', 'milestone', 'task']
+// le centre d'une map (vision sans parent, ex. « Zouk's Life ») n'est pas une vraie vision du plan
+export const isMapCenter = (e: Entity) => e.type === 'vision' && !e.parentId && !!e.mapId
+export const isPlan = (e?: Entity) => !!e && PLAN_TYPES.includes(e.type) && !e.archived && !isMapCenter(e)
+const CONTAINERS: EntityType[] = ['category', 'project', 'subproject']
+const ORDER: Record<string, number> = { category: 0, project: 1, subproject: 2, vision: 3, objective: 4, milestone: 5, task: 6 }
 
-const isContainer = (e: Entity) => e.type === 'project' || e.type === 'subproject' || e.type === 'category'
-const isGroup = (e: Entity) => e.type === 'objective'
-const isItem = (e: Entity) => e.type === 'task' || e.type === 'milestone'
-
-function nearest(ents: Record<string, Entity>, e: Entity, pred: (x: Entity) => boolean, viaLinks = true): Entity | null {
-  const anc = ancestors(ents, e.id).reverse().find(pred)
-  if (anc) return anc
-  if (!viaLinks) return null
-  for (const id of [...(e.projectIds || []), ...(e.objectiveIds || [])]) {
-    const x = ents[id]
-    if (!x) continue
-    if (pred(x)) return x
-    const up = nearest(ents, x, pred, false)
-    if (up) return up
-  }
+export function planParent(ents: Record<string, Entity>, e: Entity): Entity | null {
+  if (e.parentId && isPlan(ents[e.parentId])) return ents[e.parentId]
+  // parent direct hors plan (ex. catégorie de la map supprimée) : on remonte
+  if (e.parentId) { const up = ancestors(ents, e.id).reverse().find(isPlan); if (up) return up }
+  for (const id of [...(e.objectiveIds || []), ...(e.projectIds || [])]) if (isPlan(ents[id]) && ents[id].id !== e.id) return ents[id]
   return null
 }
 
-function itemsOf(ents: Record<string, Entity>, id: string) {
-  const ms = descendants(ents, id).map((d) => ents[d]).filter((x) => x?.type === 'milestone')
-  const linked = Object.values(ents).filter((x) => x.type === 'milestone' && (x.projectIds?.includes(id) || x.objectiveIds?.includes(id) || x.linkedIds?.includes(id)))
-  return [...relatedTasks(ents, id), ...ms, ...linked]
-}
-
-export function usePlan(showDone: boolean) {
+function useTree(showDone: boolean) {
   const ents = useData((s) => s.entities)
   return useMemo(() => {
-    const all = Object.values(ents).filter((e) => !e.archived)
-    const keep = (t: Entity) => showDone || !t.done
-    const claimed = new Set<string>()
-    const depth = (e: Entity) => ancestors(ents, e.id).length
-    const sortItems = (a: Entity, b: Entity) => Number(!!a.done) - Number(!!b.done) || Number(a.type === 'milestone') - Number(b.type === 'milestone') || (a.date || '9').localeCompare(b.date || '9') || (b.priority ?? 0) - (a.priority ?? 0)
-    const take = (list: Entity[]) => {
-      const out: Entity[] = []
-      for (const t of list) if (keep(t) && !claimed.has(t.id)) { claimed.add(t.id); out.push(t) }
-      return out.sort(sortItems)
+    const kids = new Map<string, Entity[]>()
+    const roots: Entity[] = []
+    for (const e of Object.values(ents)) {
+      if (!isPlan(e)) continue
+      if (e.type === 'task' && e.done && !showDone) continue
+      const p = planParent(ents, e)
+      if (p) { const a = kids.get(p.id) || []; a.push(e); kids.set(p.id, a) }
+      else roots.push(e)
     }
-
-    // 1) conteneurs : sections (catégories racines) et cartes (projets / sous-catégories)
-    const sections = new Map<string, Section>()
-    const other: Section = { cat: null, cards: [], groups: [] }
-    const cards = new Map<string, Card>()
-    const containers = all.filter(isContainer).sort((x, y) => depth(x) - depth(y))
-    for (const c of containers) {
-      const parent = nearest(ents, c, isContainer, c.type !== 'category')
-      if (!parent && c.type === 'category') { sections.set(c.id, { cat: c, cards: [], groups: [] }); continue }
-      const card: Card = { e: c, cards: [], groups: [] }
-      cards.set(c.id, card)
-      if (parent && cards.has(parent.id)) cards.get(parent.id)!.cards.push(card)
-      else if (parent && sections.has(parent.id)) sections.get(parent.id)!.cards.push(card)
-      else other.cards.push(card)
-    }
-    const holderOf = (e: Entity): { groups: Group[] } => {
-      const c = nearest(ents, e, isContainer)
-      if (c && cards.has(c.id)) return cards.get(c.id)!
-      if (c && sections.has(c.id)) return sections.get(c.id)!
-      return other
-    }
-
-    // 2) objectifs : les plus profonds réclament leurs tâches en premier (pas de doublon)
-    for (const g of all.filter(isGroup).sort((x, y) => depth(y) - depth(x))) {
-      const items = take(itemsOf(ents, g.id).filter(isItem))
-      if (g.type === 'subproject' && !items.length && all.some((x) => isGroup(x) && x.parentId === g.id)) continue
-      holderOf(g).groups.push({ obj: g, items })
-    }
-    // 3) tâches restantes d'un conteneur → « Sans objectif » dans ce conteneur
-    for (const c of [...containers].sort((x, y) => depth(y) - depth(x))) {
-      const rest = take(itemsOf(ents, c.id).filter(isItem))
-      if (!rest.length) continue
-      const h = cards.get(c.id) ?? sections.get(c.id)
-      h?.groups.push({ obj: null, items: rest })
-    }
-    // 4) le reste : « À classer »
-    const loose = take(all.filter(isItem))
-    if (loose.length) other.groups.push({ obj: null, items: loose })
-
-    const order = ['doing', 'blocked', 'waiting', 'todo', 'backlog', 'done']
-    const rank = (c: Card) => (c.e.type === 'category' ? -1 : order.indexOf(c.e.status || 'todo'))
-    const sortCards = (list: Card[]) => { list.sort((a, b) => rank(a) - rank(b) || (a.e.y ?? 0) - (b.e.y ?? 0)); list.forEach((c) => { sortCards(c.cards); c.groups.sort((a, b) => Number(!a.obj) - Number(!b.obj) || (a.obj?.y ?? 0) - (b.obj?.y ?? 0)) }) }
-    const list = [...sections.values()].sort((a, b) => (a.cat?.y ?? 0) - (b.cat?.y ?? 0))
-    for (const s of [...list, other]) sortCards(s.cards)
-    return [...list, other].filter((s) => s.cards.length || s.groups.length)
+    const sort = (a: Entity, b: Entity) =>
+      (ORDER[a.type] ?? 9) - (ORDER[b.type] ?? 9) ||
+      (a.type === 'task' ? Number(!!a.done) - Number(!!b.done) || (a.date || '9').localeCompare(b.date || '9') : 0) ||
+      (a.type === 'milestone' ? (a.done ? '0' + (a.doneAt || '') : a.date || '9').localeCompare(b.done ? '0' + (b.doneAt || '') : b.date || '9') : 0) ||
+      (a.y ?? 0) - (b.y ?? 0)
+    for (const a of kids.values()) a.sort(sort)
+    const top = roots.filter((r) => r.type !== 'task' && r.type !== 'milestone').sort(sort)
+    const loose = roots.filter((r) => r.type === 'task' || r.type === 'milestone').sort(sort)
+    return { kids, top, loose }
   }, [ents, showDone])
 }
 
@@ -106,183 +58,230 @@ function useOpen(key: string, def = true) {
   return [open, toggle] as const
 }
 
+function addChild(parent: Entity | null, type: EntityType, title: string) {
+  const s = useData.getState()
+  if (!parent) return s.create({ type, title, status: CONTAINERS.includes(type) ? 'todo' : undefined })
+  const pos = parent.mapId ? placeChild(s.entities, parent) : {}
+  return s.create({ type, title, parentId: parent.id, mapId: parent.mapId ?? null, ...pos })
+}
+
+const ADDS: Partial<Record<EntityType, EntityType[]>> = {
+  category: ['project', 'subproject', 'vision', 'objective'],
+  project: ['subproject', 'vision', 'objective', 'task'],
+  subproject: ['vision', 'objective', 'task'],
+  vision: ['objective'],
+  objective: ['milestone', 'task'],
+  milestone: ['task']
+}
+const LABEL: Partial<Record<EntityType, string>> = { project: 'Projet', subproject: 'Sous-projet', vision: 'Vision', objective: 'Objectif', milestone: 'Jalon', task: 'Tâche' }
+
+type Tree = ReturnType<typeof useTree>
+type Ctx = { tree: Tree; compact?: boolean; showDone: boolean }
+
 export function ProjectTree({ compact, showDone = false }: { compact?: boolean; showDone?: boolean }) {
-  const sections = usePlan(showDone)
-  const [newProject, setNewProject] = useState('')
+  const tree = useTree(showDone)
+  const ctx: Ctx = { tree, compact, showDone }
+  const [txt, setTxt] = useState('')
   return (
-    <div className="space-y-6">
-      {sections.map((s) => <SectionView key={s.cat?.id ?? 'other'} s={s} compact={compact} />)}
-      <form className="flex items-center gap-2 rounded-2xl border border-dashed border-line/70 px-3 py-2" onSubmit={(e) => { e.preventDefault(); if (!newProject.trim()) return; useData.getState().create({ type: 'project', title: newProject.trim(), status: 'todo' }); setNewProject('') }}>
+    <div className="space-y-3">
+      {tree.top.map((e) => <Node key={e.id} e={e} ctx={ctx} depth={0} />)}
+      {tree.loose.length > 0 && (
+        <div className="card px-1.5 py-1.5">
+          <div className="px-2.5 py-1.5 text-[12px] font-medium text-mute">À classer</div>
+          {tree.loose.map((e) => <Node key={e.id} e={e} ctx={ctx} depth={1} />)}
+        </div>
+      )}
+      <form className="flex items-center gap-2 rounded-2xl border border-dashed border-line/70 px-3 py-2" onSubmit={(e) => { e.preventDefault(); if (!txt.trim()) return; addChild(null, 'project', txt.trim()); setTxt('') }}>
         <Icon name="plus" className="h-4 w-4 text-mute" />
-        <input className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder="Nouveau projet" value={newProject} onChange={(e) => setNewProject(e.target.value)} />
+        <input className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder="Nouveau projet (ex. Vie personnelle)" value={txt} onChange={(e) => setTxt(e.target.value)} />
       </form>
     </div>
   )
 }
 
-function SectionView({ s, compact }: { s: Section; compact?: boolean }) {
-  const [open, toggle] = useOpen('cat.' + (s.cat?.id ?? 'other'))
-  const cat = s.cat
-  return (
-    <section>
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <button onClick={toggle} className="flex min-w-0 items-center gap-2 text-left">
-          <Icon name="chevron" className={`h-3 w-3 text-mute transition ${open ? 'rotate-90' : ''}`} />
-          {cat && <span style={{ color: cat.color }}>{cat.icon || '◇'}</span>}
-          <span className="truncate font-display text-[12px] font-semibold uppercase tracking-[0.14em] text-mute">{cat ? cat.title : 'À classer'}</span>
-        </button>
-        <span className="h-px flex-1 bg-line/60" />
-        {cat && <AddProject parent={cat} />}
-      </div>
-      {open && (
-        <div className="space-y-2.5">
-          {s.cards.map((c) => <ContainerCard key={c.e.id} c={c} compact={compact} />)}
-          {s.groups.map((g, i) => (
-            <div key={g.obj?.id ?? 'loose' + i} className="card px-1.5 py-1.5">
-              <GroupView g={g} project={cat} compact={compact} />
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  )
+function Node({ e, ctx, depth }: { e: Entity; ctx: Ctx; depth: number }) {
+  if (e.type === 'task') return <TaskRow t={e} compact={ctx.compact} hideProject />
+  if (e.type === 'milestone') return <MilestoneNode m={e} ctx={ctx} />
+  if (e.type === 'objective') return <ObjectiveNode o={e} ctx={ctx} />
+  if (e.type === 'vision') return <VisionNode v={e} ctx={ctx} />
+  return <ContainerNode c={e} ctx={ctx} depth={depth} />
 }
 
-function AddProject({ parent }: { parent: Entity }) {
-  const [on, setOn] = useState(false)
+function Children({ e, ctx, depth }: { e: Entity; ctx: Ctx; depth: number }) {
+  const list = ctx.tree.kids.get(e.id) || []
+  return <>{list.map((k) => <Node key={k.id} e={k} ctx={ctx} depth={depth + 1} />)}</>
+}
+
+function AddBar({ parent }: { parent: Entity }) {
+  const types = ADDS[parent.type] || []
+  const [adding, setAdding] = useState<EntityType | null>(null)
   const [txt, setTxt] = useState('')
-  if (!on) return <button className="text-[11px] text-mute hover:text-ink" onClick={() => setOn(true)}>+ Projet</button>
+  if (!types.length) return null
+  if (adding)
+    return (
+      <form className="flex items-center gap-2 rounded-xl border border-dashed border-line/70 px-3 py-1.5" onSubmit={(ev) => { ev.preventDefault(); if (!txt.trim()) return; addChild(parent, adding, txt.trim()); setTxt('') }}>
+        <span className="w-4 text-center text-[12px]" style={{ color: TYPE_META[adding].tint }}>{TYPE_META[adding].glyph}</span>
+        <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder={`Nouveau ${LABEL[adding]?.toLowerCase()}`} value={txt} onChange={(ev) => setTxt(ev.target.value)} onBlur={() => !txt && setAdding(null)} onKeyDown={(ev) => ev.key === 'Escape' && setAdding(null)} />
+      </form>
+    )
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!txt.trim()) return; const s = useData.getState(); const pos = parent.mapId ? placeChild(s.entities, parent) : {}; s.create({ type: 'project', title: txt.trim(), status: 'todo', parentId: parent.id, mapId: parent.mapId ?? null, ...pos }); setTxt(''); setOn(false) }}>
-      <input autoFocus className="w-36 rounded-lg border border-line bg-surface px-2 py-0.5 text-[12px] outline-none" placeholder="Nom du projet" value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setOn(false)} onKeyDown={(e) => e.key === 'Escape' && setOn(false)} />
-    </form>
+    <div className="flex flex-wrap gap-1 px-1 pt-0.5">
+      {types.map((t) => (
+        <button key={t} className="rounded-lg px-1.5 py-1 text-[11.5px] text-mute hover:bg-ink/5 hover:text-ink" onClick={() => setAdding(t)}>+ {LABEL[t]}</button>
+      ))}
+    </div>
   )
 }
 
-function ContainerCard({ c, compact, nested }: { c: Card; compact?: boolean; nested?: boolean }) {
+function Header({ e, open, toggle, size = 'md', right }: { e: Entity; open: boolean; toggle: () => void; size?: 'lg' | 'md' | 'sm'; right?: ReactNode }) {
+  const color = e.color || TYPE_META[e.type].tint
+  return (
+    <div className={`flex items-center gap-2 ${size === 'lg' ? 'px-3.5 py-3' : 'px-2.5 py-2'}`} style={size === 'lg' ? { background: `linear-gradient(90deg, ${color}18, transparent 60%)` } : undefined}>
+      <button onClick={toggle} className="text-mute"><Icon name="chevron" className={`h-3 w-3 transition ${open ? 'rotate-90' : ''}`} /></button>
+      <span className={size === 'lg' ? 'text-[15px]' : 'text-[13px]'} style={{ color }}>{e.icon || TYPE_META[e.type].glyph}</span>
+      <button className={`min-w-0 flex-1 truncate text-left ${size === 'lg' ? 'font-display text-[15px] font-semibold' : 'text-[13.5px] font-semibold'} ${e.done ? 'text-mute' : ''}`} onClick={() => useUI.getState().open(e.id)}>
+        {e.title || 'Sans titre'}
+      </button>
+      {right}
+    </div>
+  )
+}
+
+function ContainerNode({ c, ctx, depth }: { c: Entity; ctx: Ctx; depth: number }) {
   const ents = useData((s) => s.entities)
-  const p = c.e
-  const [open, toggle] = useOpen(p.id)
-  const [adding, setAdding] = useState<null | 'objective' | 'project'>(null)
-  const [txt, setTxt] = useState('')
-  const color = p.color || (p.type === 'category' ? '#b9c3e6' : '#7aa7ff')
-  const prog = p.type !== 'category' ? progressOf(ents, p) : null
-  const count = (x: Card): number => x.groups.reduce((n, g) => n + g.items.filter((t) => !t.done && t.type === 'task').length, 0) + x.cards.reduce((n, k) => n + count(k), 0)
-  const left = count(c)
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!txt.trim() || !adding) return
-    const s = useData.getState()
-    const pos = p.mapId ? placeChild(s.entities, p) : {}
-    s.create({ type: adding, title: txt.trim(), parentId: p.id, mapId: p.mapId ?? null, status: adding === 'project' ? 'todo' : undefined, progressMode: adding === 'project' ? 'auto' : undefined, ...pos })
-    setTxt('')
-  }
+  const [open, toggle] = useOpen(c.id)
+  const color = c.color || TYPE_META[c.type].tint
+  const prog = progressOf(ents, c)
+  const nested = depth > 0
   return (
-    <div className={nested ? 'overflow-hidden rounded-xl border border-line/60 bg-surface/60' : 'card overflow-hidden'}>
-      <div className={`flex items-center gap-2.5 px-3.5 ${nested ? 'py-2.5' : 'py-3'}`} style={{ background: `linear-gradient(90deg, ${color}14, transparent 60%)` }}>
-        <button onClick={toggle} className="text-mute"><Icon name="chevron" className={`h-3.5 w-3.5 transition ${open ? 'rotate-90' : ''}`} /></button>
-        <span className={nested ? 'text-[13px]' : 'text-[15px]'} style={{ color }}>{p.icon || (p.type === 'category' ? '◇' : '▣')}</span>
-        <button className={`min-w-0 flex-1 truncate text-left font-display font-semibold ${nested ? 'text-[14px]' : 'text-[15px]'}`} onClick={() => useUI.getState().open(p.id)}>{p.title}</button>
-        {prog != null && !compact && <span className="w-24"><ProgressBar value={prog} color={color} slim /></span>}
-        <button className="text-mute hover:text-ink" title="Mettre dans un autre projet" onClick={() => useUI.getState().set({ addTo: { sourceId: p.id, mode: 'move' } })}><Icon name="move" className="h-3.5 w-3.5" /></button>
-        <span className="rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[10.5px] text-mute">{left}</span>
-      </div>
+    <div className={nested ? 'overflow-hidden rounded-xl border border-line/60 bg-surface/50' : 'card overflow-hidden'}>
+      <Header e={c} open={open} toggle={toggle} size={nested ? 'md' : 'lg'} right={
+        <>
+          {!nested && <span className="rounded-md bg-ink/[0.06] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wider text-mute">{c.type === 'subproject' ? 'Sous-projet' : 'Projet'}</span>}
+          {prog != null && !ctx.compact && <span className="w-20"><ProgressBar value={prog} color={color} slim showLabel={false} /></span>}
+          <button className="text-mute hover:text-ink" title="Ranger ailleurs" onClick={() => useUI.getState().set({ addTo: { sourceId: c.id, mode: 'move' } })}><Icon name="move" className="h-3.5 w-3.5" /></button>
+        </>
+      } />
       {open && (
         <div className="space-y-1.5 px-2 pb-2">
-          {c.cards.map((k) => <ContainerCard key={k.e.id} c={k} compact={compact} nested />)}
-          {c.groups.map((g) => <GroupView key={g.obj?.id ?? 'none'} g={g} project={p} compact={compact} nested />)}
-          {adding ? (
-            <form onSubmit={submit} className="flex items-center gap-2 rounded-xl border border-dashed border-line/70 px-3 py-2">
-              <span className="text-[12px]" style={{ color: adding === 'objective' ? '#6fe0b8' : '#7aa7ff' }}>{adding === 'objective' ? '◉' : '▣'}</span>
-              <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder={adding === 'objective' ? 'Nouvel objectif' : 'Nouveau projet dedans'} value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setAdding(null)} onKeyDown={(e) => e.key === 'Escape' && setAdding(null)} />
-            </form>
-          ) : (
-            <div className="flex gap-1.5">
-              <button className="flex-1 rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-left text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('objective')}>+ Objectif</button>
-              <button className="rounded-xl border border-dashed border-line/60 px-3 py-1.5 text-[12px] text-mute hover:border-accent/50 hover:text-ink" onClick={() => setAdding('project')}>+ Projet</button>
-            </div>
-          )}
+          <Children e={c} ctx={ctx} depth={depth} />
+          <AddBar parent={c} />
         </div>
       )}
     </div>
   )
 }
 
-function GroupView({ g, project, compact, nested }: { g: Group; project: Entity | null; compact?: boolean; nested?: boolean }) {
+function VisionNode({ v, ctx }: { v: Entity; ctx: Ctx }) {
   const ents = useData((s) => s.entities)
-  const o = g.obj
-  const [open, toggle] = useOpen(o?.id ?? 'none.' + (project?.id ?? 'x'))
-  const [adding, setAdding] = useState<null | 'task' | 'milestone'>(null)
-  const [txt, setTxt] = useState('')
-  const color = o?.color || (o?.type === 'subproject' ? '#86b7ff' : '#6fe0b8')
-  const prog = o ? progressOf(ents, o) ?? 0 : null
-  const left = g.items.filter((t) => !t.done && t.type === 'task').length
-  const add = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!txt.trim() || !adding) return
-    const s = useData.getState()
-    const links = {
-      objectiveIds: o?.type === 'objective' ? [o.id] : undefined,
-      projectIds: [...(project ? [project.id] : []), ...(o?.type === 'subproject' ? [o.id] : [])]
-    }
-    if (adding === 'milestone' && (o || project)) {
-      const parent = o || project!
-      const pos = parent.mapId ? placeChild(s.entities, parent) : {}
-      s.create({ type: 'milestone', title: txt.trim(), parentId: parent.id, mapId: parent.mapId ?? null, ...pos })
-    } else s.create({ type: adding === 'milestone' ? 'milestone' : 'task', title: txt.trim(), ...links })
-    setTxt('')
-  }
-  const header: ReactNode = o ? (
-    <div className="flex items-center gap-2 px-2.5 py-2">
-      <button onClick={toggle} className="text-mute"><Icon name="chevron" className={`h-3 w-3 transition ${open ? 'rotate-90' : ''}`} /></button>
-      <span className="text-[12px]" style={{ color }}>{o.icon || (o.type === 'objective' ? '◉' : '▢')}</span>
-      <button className="min-w-0 flex-1 truncate text-left text-[13.5px] font-semibold" onClick={() => useUI.getState().open(o.id)}>{o.title}</button>
-      {o.deadline && !compact && <span className="text-[10.5px] text-mute">⚑ {fmtDay(o.deadline)}</span>}
-      <span className="w-14"><ProgressBar value={prog} color={color} slim showLabel={false} /></span>
-      <span className="w-5 text-right font-mono text-[10.5px] text-mute">{left}</span>
-    </div>
-  ) : (
-    <div className="flex items-center gap-2 px-2.5 py-2">
-      <button onClick={toggle} className="text-mute"><Icon name="chevron" className={`h-3 w-3 transition ${open ? 'rotate-90' : ''}`} /></button>
-      <span className="flex-1 text-[12px] font-medium text-mute">{project ? 'Sans objectif' : 'Tâches à classer'}</span>
-      <span className="w-5 text-right font-mono text-[10.5px] text-mute">{left}</span>
-    </div>
-  )
+  const [open, toggle] = useOpen(v.id)
+  const prog = progressOf(ents, v) ?? 0
   return (
-    <div className={nested ? 'relative rounded-xl border border-line/50 bg-raised/40' : ''} style={nested && o ? { borderLeft: `3px solid ${color}88` } : undefined}>
-      {header}
+    <div className="rounded-xl border border-[#f4d58d]/25 bg-[#f4d58d]/[0.04]">
+      <Header e={v} open={open} toggle={toggle} right={
+        <>
+          {v.done ? <span className="text-[10.5px] font-medium text-[#f4d58d]">✦ atteinte</span> : <span className="w-16"><ProgressBar value={prog} color="#f4d58d" slim showLabel={false} /></span>}
+          <span className="w-8 text-right font-mono text-[10.5px] text-mute">{prog}%</span>
+        </>
+      } />
       {open && (
-        <div className="ml-4 border-l border-line/60 pb-1.5 pl-1.5">
-          {g.items.map((t) => (t.type === 'milestone' ? <MilestoneRow key={t.id} m={t} /> : <TaskRow key={t.id} t={t} compact={compact} hideProject />))}
-          {!g.items.length && !adding && <div className="px-2 py-1 text-[12px] text-mute/70">Aucune tâche</div>}
-          {adding ? (
-            <form className="flex items-center gap-2 px-2 py-1.5" onSubmit={add}>
-              <span className="w-4 text-center text-[12px] text-mute">{adding === 'milestone' ? '◆' : '○'}</span>
-              <input autoFocus className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-mute/70" placeholder={adding === 'milestone' ? 'Nouveau jalon' : 'Nouvelle tâche'} value={txt} onChange={(e) => setTxt(e.target.value)} onBlur={() => !txt && setAdding(null)} onKeyDown={(e) => e.key === 'Escape' && setAdding(null)} />
-            </form>
-          ) : (
-            <div className="flex gap-1 px-1">
-              <button className="rounded-lg px-1.5 py-1 text-[11.5px] text-mute hover:bg-ink/5 hover:text-ink" onClick={() => setAdding('task')}>+ Tâche</button>
-              {(o || project) && <button className="rounded-lg px-1.5 py-1 text-[11.5px] text-mute hover:bg-ink/5 hover:text-ink" onClick={() => setAdding('milestone')}>+ Jalon</button>}
-            </div>
-          )}
+        <div className="space-y-1.5 px-2 pb-2">
+          <Children e={v} ctx={ctx} depth={3} />
+          <AddBar parent={v} />
         </div>
       )}
     </div>
   )
 }
 
-function MilestoneRow({ m }: { m: Entity }) {
+function ObjectiveNode({ o, ctx }: { o: Entity; ctx: Ctx }) {
+  const ents = useData((s) => s.entities)
+  const [open, toggle] = useOpen(o.id)
+  const color = o.color || '#6fe0b8'
+  const prog = progressOf(ents, o) ?? 0
+  const ms = (ctx.tree.kids.get(o.id) || []).filter((k) => k.type === 'milestone')
   return (
-    <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-ink/[0.04]">
-      <button
-        className="ml-[3px] h-3 w-3 shrink-0 rotate-45 rounded-[2px] border-[1.5px] border-[#f4d58d] transition hover:scale-110"
-        style={{ background: m.done ? '#f4d58d' : 'transparent' }}
-        onClick={() => useData.getState().update(m.id, { done: !m.done, status: m.done ? 'todo' : 'done', doneAt: m.done ? null : new Date().toISOString() })}
-        title="Atteint"
-      />
-      <button className={`min-w-0 flex-1 truncate text-left text-[13.5px] ${m.done ? 'text-mute' : ''}`} onClick={() => useUI.getState().open(m.id)}>{m.title}</button>
-      {m.date && <span className="text-[11px] text-mute">{fmtDay(m.date)}</span>}
+    <div className="rounded-xl border border-line/50 bg-raised/40" style={{ borderLeft: `3px solid ${color}88` }}>
+      <Header e={o} open={open} toggle={toggle} right={
+        <>
+          {o.deadline && !ctx.compact && <span className="text-[10.5px] text-mute">⚑ {fmtDay(o.deadline)}</span>}
+          {ms.length > 0 && <span className="text-[10.5px] text-mute">◆ {ms.filter((m) => m.done).length}/{ms.length}</span>}
+          <span className="w-14"><ProgressBar value={prog} color={color} slim showLabel={false} /></span>
+          <span className="w-8 text-right font-mono text-[10.5px] text-mute">{prog}%</span>
+        </>
+      } />
+      {open && (
+        <div className="ml-4 space-y-0.5 border-l border-line/60 pb-1.5 pl-1.5">
+          <Children e={o} ctx={ctx} depth={4} />
+          <AddBar parent={o} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MilestoneNode({ m, ctx }: { m: Entity; ctx: Ctx }) {
+  const ents = useData((s) => s.entities)
+  const tasks = ctx.tree.kids.get(m.id) || []
+  const [open, toggle] = useOpen(m.id, !m.done)
+  const prog = progressOf(ents, m) ?? 0
+  const toggleDone = () => useData.getState().update(m.id, { done: !m.done, status: m.done ? 'todo' : 'done', doneAt: m.done ? null : new Date().toISOString() }, { action: m.done ? 'reopened' : 'done' })
+  return (
+    <div className={`rounded-lg ${m.done ? 'bg-[#f4d58d]/[0.05]' : ''}`}>
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <button onClick={toggle} className={`text-mute ${tasks.length || !m.done ? '' : 'invisible'}`}><Icon name="chevron" className={`h-3 w-3 transition ${open ? 'rotate-90' : ''}`} /></button>
+        <button className="h-3 w-3 shrink-0 rotate-45 rounded-[2px] border-[1.5px] border-[#f4d58d] transition hover:scale-110" style={{ background: m.done ? '#f4d58d' : 'transparent', boxShadow: m.done ? '0 0 10px #f4d58d88' : undefined }} onClick={toggleDone} title={m.done ? 'Jalon atteint' : 'Marquer comme atteint'} />
+        <button className={`min-w-0 flex-1 truncate text-left text-[13.5px] font-medium ${m.done ? 'text-[#f4d58d]' : ''}`} onClick={() => useUI.getState().open(m.id)}>{m.title}</button>
+        {m.done ? <span className="text-[10.5px] text-[#f4d58d]">atteint{m.doneAt ? ` · ${fmtDay(m.doneAt.slice(0, 10))}` : ''}</span> : (
+          <>
+            {m.date && <span className="text-[10.5px] text-mute">{fmtDay(m.date)}</span>}
+            {tasks.length > 0 && <span className="w-10"><ProgressBar value={prog} color="#f4d58d" slim showLabel={false} /></span>}
+          </>
+        )}
+      </div>
+      {open && (
+        <div className="ml-6 border-l border-dashed border-[#f4d58d]/30 pl-1.5">
+          {tasks.map((t) => <TaskRow key={t.id} t={t} compact={ctx.compact} hideProject />)}
+          {!m.done && <AddBar parent={m} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ───────── Ce qui est déjà accompli ─────────
+export function DoneList() {
+  const ents = useData((s) => s.entities)
+  const [kind, setKind] = useState<'all' | 'vision' | 'objective' | 'milestone' | 'task'>('all')
+  const done = Object.values(ents)
+    .filter((e) => e.done && !e.archived && ['vision', 'objective', 'milestone', 'task', 'project', 'subproject'].includes(e.type))
+    .filter((e) => kind === 'all' || e.type === kind)
+    .sort((a, b) => (b.doneAt || b.updatedAt).localeCompare(a.doneAt || a.updatedAt))
+  const count = (t: string) => Object.values(ents).filter((e) => e.done && !e.archived && e.type === t).length
+  const pathOf = (e: Entity) => { const out: string[] = []; let p = planParent(ents, e); const seen = new Set<string>(); while (p && !seen.has(p.id)) { seen.add(p.id); out.unshift(p.title); p = planParent(ents, p) } return out.join(' › ') }
+  return (
+    <div>
+      <div className="mb-4 grid grid-cols-4 gap-2">
+        {([['vision', 'Visions', '#f4d58d'], ['objective', 'Objectifs', '#6fe0b8'], ['milestone', 'Jalons', '#f4d58d'], ['task', 'Tâches', '#8ea2ff']] as const).map(([k, l, c]) => (
+          <button key={k} onClick={() => setKind(kind === k ? 'all' : k)} className={`rounded-2xl border p-3 text-left transition ${kind === k ? 'border-accent/60 bg-accent/10' : 'border-line/70 bg-surface hover:bg-ink/[0.03]'}`}>
+            <div className="font-display text-2xl font-semibold" style={{ color: c }}>{count(k)}</div>
+            <div className="text-[11px] text-mute">{l} terminé{k === 'vision' ? 'es' : 's'}</div>
+          </button>
+        ))}
+      </div>
+      <div className="card p-1.5">
+        {done.map((e) => (
+          <button key={e.id} onClick={() => useUI.getState().open(e.id)} className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-ink/[0.04]">
+            <span className="w-5 text-center" style={{ color: e.type === 'task' ? '#6fe0b8' : e.color || TYPE_META[e.type].tint }}>{e.type === 'task' ? '✓' : e.icon || TYPE_META[e.type].glyph}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13.5px]">{e.title}</span>
+              <span className="block truncate text-[11px] text-mute">{TYPE_META[e.type].label}{pathOf(e) ? ` · ${pathOf(e)}` : ''}</span>
+            </span>
+            <span className="shrink-0 text-[11px] text-mute">{e.doneAt ? fmtDay(e.doneAt.slice(0, 10)) : ''}</span>
+          </button>
+        ))}
+        {!done.length && <div className="px-3 py-8 text-center text-sm text-mute">Rien de terminé pour l’instant.</div>}
+      </div>
     </div>
   )
 }

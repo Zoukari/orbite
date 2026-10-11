@@ -106,7 +106,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
   const up = (patch: Partial<Entity>) => useData.getState().update(e.id, patch)
   const [more, setMore] = useState(false)
   const isProj = ['project', 'subproject', 'objective', 'vision', 'category'].includes(e.type)
-  const isWork = ['project', 'subproject', 'objective'].includes(e.type)
+  const isWork = ['project', 'subproject', 'objective', 'vision'].includes(e.type)
   const isTask = e.type === 'task'
   const progress = progressOf(ents, e)
   const noteLike = ['note', 'idea', 'text', 'document'].includes(e.type)

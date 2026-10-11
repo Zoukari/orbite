@@ -20,6 +20,11 @@ export function SettingsView() {
   return (
     <Page title="Réglages">
       <div className="space-y-5">
+        <Card title="Profil">
+          <Row label="Ton prénom"><input className="input !w-44" placeholder="Zoukari" value={s.userName || ''} onChange={(e) => set({ userName: e.target.value })} /></Row>
+          <Row label="Reclasser mes éléments" hint="Projet → Sous-projet → Vision → Objectif → Jalon → Tâche. L’assistant te pose une question par élément."><button className="btn-soft text-xs" onClick={() => useUI.getState().set({ reclass: true })}>Lancer</button></Row>
+        </Card>
+
         <Card title="Sauvegarde" sub={<>Dernière sauvegarde : <b className={!s.lastBackupAt ? 'text-[#f2b45a]' : 'text-ink'}>{fmtRelative(s.lastBackupAt)}</b></>}>
           <div className="flex flex-wrap gap-2">
             <button className="btn-primary text-xs" onClick={exportAll}><Icon name="share" className="h-4 w-4" />Exporter toutes mes données (JSON)</button>
