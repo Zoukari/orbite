@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from 'react'
+import { useUI } from './store'
 
 // Rendu markdown minimal et sûr (pas de HTML injecté) :
 // titres, gras, italique, listes, cases à cocher, liens, citations.
@@ -17,7 +18,10 @@ function inline(text: string, key: string): ReactNode[] {
     else if (t.startsWith('`')) out.push(<code key={k} className="rounded bg-ink/10 px-1 font-mono text-[0.9em]">{t.slice(1, -1)}</code>)
     else if (t.startsWith('[')) {
       const mm = t.match(/\[([^\]]+)\]\(([^)]+)\)/)!
-      out.push(<a key={k} href={safe(mm[2])} target="_blank" rel="noreferrer" className="text-accent underline decoration-accent/40 underline-offset-2">{mm[1]}</a>)
+      if (mm[2].startsWith('orbite:')) {
+        const id = mm[2].slice(7)
+        out.push(<button key={k} type="button" onClick={(ev) => { ev.stopPropagation(); useUI.getState().open(id) }} className="inline-flex items-center gap-1 rounded-md bg-[#d6c6ff]/15 px-1.5 py-[1px] text-[0.95em] font-medium text-[#d6c6ff] hover:bg-[#d6c6ff]/25">≡ {mm[1]}</button>)
+      } else out.push(<a key={k} href={safe(mm[2])} target="_blank" rel="noreferrer" className="text-accent underline decoration-accent/40 underline-offset-2">{mm[1]}</a>)
     } else if (t.startsWith('http')) out.push(<a key={k} href={safe(t)} target="_blank" rel="noreferrer" className="text-accent underline decoration-accent/40 underline-offset-2 break-all">{t}</a>)
     else out.push(<em key={k}>{t.slice(1, -1)}</em>)
     last = m.index + t.length

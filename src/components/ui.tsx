@@ -77,7 +77,8 @@ export function Modal({ open, onClose, children, title, wide, bare }: { open: bo
     return () => window.removeEventListener('keydown', fn)
   }, [open, onClose])
   if (!open) return null
-  return (
+  // portail : la fenêtre passe au-dessus de tout, même si elle est ouverte depuis un bloc isolé
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end justify-center md:items-start md:pt-[12vh]" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="fade absolute inset-0 bg-black/40 backdrop-blur-[2px] dark:bg-black/60" onPointerDown={onClose} />
       <div className={`relative w-full ${wide ? 'md:max-w-2xl' : 'md:max-w-lg'} ${mobile ? 'sheet max-h-[88vh] rounded-t-3xl safe-b' : 'rise max-h-[76vh] rounded-3xl'} flex flex-col overflow-hidden border border-line/70 bg-surface shadow-2xl`}>
@@ -90,7 +91,8 @@ export function Modal({ open, onClose, children, title, wide, bare }: { open: bo
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

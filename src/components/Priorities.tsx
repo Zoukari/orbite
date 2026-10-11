@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useData, useUI } from '../lib/store'
+import { planParent } from './ProjectTree'
+import type { Entity } from '../lib/types'
 import { horizonOf, today } from '../lib/dates'
 import { Icon, Modal } from './ui'
 
@@ -18,7 +20,7 @@ export function TopThree({ large }: { large?: boolean }) {
       <span className="beam-bg" />
       <div className="mb-2 flex items-center justify-between px-0.5">
         <div className="section-title">Mes 3 priorités</div>
-        {items.length < 3 && <button className="text-[11px] font-medium text-accent" onClick={() => setPick(true)}>Choisir</button>}
+        <button className="text-[11px] font-medium text-accent" onClick={() => setPick(true)}>{items.length < 3 ? 'Choisir' : '+ Tâches du jour'}</button>
       </div>
       <div className="relative space-y-1.5">
         {[0, 1, 2].map((i) => {
@@ -54,37 +56,83 @@ export function TopThree({ large }: { large?: boolean }) {
 function PickTop({ onClose }: { onClose: () => void }) {
   const ents = useData((s) => s.entities)
   const ids = useData((s) => s.settings.dailyTop.ids)
+  const prios = useData((s) => s.settings.priorities)
   const [q, setQ] = useState('')
-  const open = Object.values(ents).filter((e) => e.type === 'task' && !e.done && !e.archived && !ids.includes(e.id))
-  const rank = (h: string) => ['overdue', 'today', 'short', 'medium', 'inbox', 'long', 'someday'].indexOf(h)
-  const list = open
-    .filter((t) => !q || norm(t.title).includes(norm(q)))
-    .sort((a, b) => rank(horizonOf(a)) - rank(horizonOf(b)) || (b.priority ?? 0) - (a.priority ?? 0))
-    .slice(0, 40)
-  const add = (id: string) => {
-    const s = useData.getState()
-    const next = [...s.settings.dailyTop.ids, id]
-    s.setSettings({ dailyTop: { date: today(), ids: next } })
-    if (!ents[id].date || ents[id].date! > today()) s.update(id, { date: today(), inbox: false })
-    if (next.length >= 3) onClose()
-  }
+  const [sel, setSel] = useState<string[]>([])
   const [newT, setNewT] = useState('')
+  const slots = Math.max(0, 3 - ids.length)
+
+  // tâches ouvertes regroupées par projet › sous-projet
+  const groups = useMemo(() => {
+    const rank = (h: string) => ['overdue', 'today', 'short', 'medium', 'inbox', 'long', 'someday'].indexOf(h)
+    const open = Object.values(ents)
+      .filter((e) => e.type === 'task' && !e.done && !e.archived && !ids.includes(e.id))
+      .filter((t) => !q || norm(t.title).includes(norm(q)))
+    const map = new Map<string, { label: string; color?: string; icon?: string; tasks: Entity[] }>()
+    for (const t of open) {
+      const chain: Entity[] = []
+      let p = planParent(ents, t)
+      const seen = new Set<string>()
+      while (p && !seen.has(p.id)) { seen.add(p.id); chain.unshift(p); p = planParent(ents, p) }
+      const containers = chain.filter((c) => ['category', 'project', 'subproject'].includes(c.type))
+      const key = containers.map((c) => c.id).join('/') || 'none'
+      const last = containers[containers.length - 1]
+      if (!map.has(key)) map.set(key, { label: containers.length ? containers.map((c) => c.title).join(' › ') : 'Sans projet', color: last?.color, icon: last?.icon, tasks: [] })
+      map.get(key)!.tasks.push(t)
+    }
+    const list = [...map.values()]
+    list.forEach((g) => g.tasks.sort((a, b) => rank(horizonOf(a)) - rank(horizonOf(b)) || (b.priority ?? 0) - (a.priority ?? 0)))
+    return list.sort((a, b) => Number(a.label === 'Sans projet') - Number(b.label === 'Sans projet') || a.label.localeCompare(b.label))
+  }, [ents, ids, q])
+
+  const toggle = (id: string) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
+  const validate = () => {
+    const s = useData.getState()
+    const toTop = sel.slice(0, slots)
+    s.setSettings({ dailyTop: { date: today(), ids: [...s.settings.dailyTop.ids, ...toTop] } })
+    for (const id of sel) if (!s.entities[id].date || s.entities[id].date! > today()) s.update(id, { date: today(), inbox: false })
+    const extra = sel.length - toTop.length
+    useUI.getState().notify(extra > 0 ? `${toTop.length} priorité(s) + ${extra} tâche(s) pour aujourd’hui` : `${toTop.length} priorité(s) ajoutée(s)`)
+    onClose()
+  }
+  const badge = (id: string) => { const i = sel.indexOf(id); if (i < 0) return null; return i < slots ? `0${ids.length + i + 1}` : 'jour' }
   return (
-    <Modal open onClose={onClose} title={`Priorité ${ids.length + 1} sur 3`}>
+    <Modal open onClose={onClose} title="Choisir mes tâches du jour" wide>
       <div className="px-4 pb-4">
+        <div className="mb-2 text-[12px] text-mute">Coche plusieurs tâches : les {slots} premières deviennent tes priorités, les autres passent dans « Aujourd’hui ».</div>
         <input autoFocus className="input mb-2" placeholder="Filtrer…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <form className="mb-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!newT.trim()) return; const t = useData.getState().create({ type: 'task', title: newT.trim(), date: today() }); add(t.id); setNewT('') }}>
+        <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!newT.trim()) return; const t = useData.getState().create({ type: 'task', title: newT.trim(), date: today() }); setSel((c) => [...c, t.id]); setNewT('') }}>
           <input className="input" placeholder="…ou nouvelle tâche" value={newT} onChange={(e) => setNewT(e.target.value)} />
           <button className="btn-soft">Créer</button>
         </form>
-        {list.map((t) => (
-          <button key={t.id} onClick={() => add(t.id)} className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm hover:bg-ink/5">
-            <span className="h-2 w-2 rounded-full" style={{ background: useData.getState().settings.priorities.find((p) => p.level === t.priority)?.color || 'rgb(var(--line))' }} />
-            <span className="flex-1 truncate">{t.title}</span>
-            <span className="text-[11px] text-mute">{{ overdue: 'en retard', today: "aujourd'hui", short: 'bientôt', medium: '', long: '', someday: '', inbox: 'inbox', done: '' }[horizonOf(t)]}</span>
-          </button>
-        ))}
-        {!list.length && <div className="py-6 text-center text-sm text-mute">Aucune tâche ouverte.</div>}
+        <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+          {groups.map((g) => (
+            <div key={g.label}>
+              <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: g.color || 'rgb(var(--mute))' }}>{g.icon && <span>{g.icon}</span>}<span className="truncate">{g.label}</span><span className="font-mono font-normal text-mute">{g.tasks.length}</span></div>
+              {g.tasks.map((t) => {
+                const on = sel.includes(t.id)
+                const b = badge(t.id)
+                const p = prios.find((x) => x.level === t.priority)
+                return (
+                  <button key={t.id} onClick={() => toggle(t.id)} className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left text-sm transition ${on ? 'bg-accent/10' : 'hover:bg-ink/5'}`}>
+                    <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border ${on ? 'border-accent bg-accent text-bg' : 'border-line'}`}>{on && <Icon name="check" className="h-3 w-3" stroke={3} />}</span>
+                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                    {p && p.level >= 2 && <span className="text-[11px]" style={{ color: p.color }}>{p.glyph}</span>}
+                    <span className="text-[11px] text-mute">{{ overdue: 'en retard', today: "aujourd'hui", short: 'bientôt', medium: '', long: '', someday: '', inbox: 'inbox', done: '' }[horizonOf(t)]}</span>
+                    {b && <span className={`rounded-md px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${b === 'jour' ? 'bg-ink/10 text-mute' : 'bg-[#f2b45a]/20 text-[#f2b45a]'}`}>{b}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+          {!groups.length && <div className="py-6 text-center text-sm text-mute">Aucune tâche ouverte.</div>}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-xs text-mute">{sel.length} sélectionnée(s)</span>
+          <div className="flex-1" />
+          <button className="btn-ghost text-xs" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" disabled={!sel.length} onClick={validate}>Valider</button>
+        </div>
       </div>
     </Modal>
   )

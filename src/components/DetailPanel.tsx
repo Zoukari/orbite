@@ -4,7 +4,7 @@ import { TYPE_META } from '../lib/meta'
 import { LookPicker } from './LookPicker'
 import { fmtDay, fmtRelative, recurrenceLabel, DAY_NAMES, today } from '../lib/dates'
 import { Markdown, toggleCheckboxLine } from '../lib/markdown'
-import { Icon, Info, ProgressBar, PriorityBadge, Segmented, TypeGlyph, Toggle, useIsMobile } from './ui'
+import { Icon, Info, Modal, ProgressBar, PriorityBadge, Segmented, TypeGlyph, Toggle, useIsMobile } from './ui'
 import { TaskRow } from './TaskRow'
 import type { Entity, Recurrence } from '../lib/types'
 
@@ -237,6 +237,17 @@ function Field({ label, children, right }: { label: string; children: ReactNode;
 function Description({ e, big }: { e: Entity; big: boolean }) {
   const [edit, setEdit] = useState(!e.description && big)
   const [text, setText] = useState(e.description || '')
+  const [pickNote, setPickNote] = useState(false)
+  const insertNote = (n: Entity) => {
+    const ta = document.getElementById('md-' + e.id) as HTMLTextAreaElement | null
+    const label = (n.title || 'Note').replace(/[\[\]]/g, '')
+    const tag = `[${label}](orbite:${n.id})`
+    const at = ta ? ta.selectionStart : text.length
+    const next = text.slice(0, at) + (at && !/\s$/.test(text.slice(0, at)) ? ' ' : '') + tag + ' ' + text.slice(at)
+    setText(next)
+    useData.getState().update(e.id, { description: next, linkedIds: [...new Set([...(e.linkedIds || []), n.id])] })
+    setPickNote(false)
+  }
   useEffect(() => setText(e.description || ''), [e.id])
   const save = () => text !== (e.description || '') && useData.getState().update(e.id, { description: text })
   const wrap = (before: string, after = before) => {
@@ -256,12 +267,14 @@ function Description({ e, big }: { e: Entity; big: boolean }) {
     setTimeout(() => ta.focus())
   }
   return (
-    <Field label={big ? 'Contenu' : 'Description'} right={<button className="text-[11px] font-medium text-accent" onClick={() => { if (edit) save(); setEdit(!edit) }}>{edit ? 'Aperçu' : 'Modifier'}</button>}>
+    <>
+    {pickNote && <NotePicker onPick={insertNote} onClose={() => setPickNote(false)} />}
+    <Field label={big ? 'Contenu' : 'Description'} right={<span className="flex items-center gap-3"><button className="text-[11px] font-medium text-[#d6c6ff]" onClick={() => setPickNote(true)}>≡ Lier une note</button><button className="text-[11px] font-medium text-accent" onClick={() => { if (edit) save(); setEdit(!edit) }}>{edit ? 'Aperçu' : 'Modifier'}</button></span>}>
       {edit ? (
         <div className="rounded-2xl border border-line bg-raised/40 focus-within:border-accent/50">
           <div className="flex gap-0.5 border-b border-line/60 px-1.5 py-1 text-[12px]">
-            {[['H', () => line('## ')], ['B', () => wrap('**')], ['I', () => wrap('*')], ['•', () => line('- ')], ['☐', () => line('- [ ] ')], ['↗', () => wrap('[', '](https://)')]].map(([l, fn]) => (
-              <button key={l as string} onMouseDown={(ev) => ev.preventDefault()} onClick={fn as () => void} className={`h-7 w-7 rounded-md hover:bg-ink/10 ${l === 'B' ? 'font-bold' : l === 'I' ? 'italic' : ''}`}>{l as string}</button>
+            {[['H', () => line('## ')], ['B', () => wrap('**')], ['I', () => wrap('*')], ['•', () => line('- ')], ['☐', () => line('- [ ] ')], ['↗', () => wrap('[', '](https://)')], ['≡ Note', () => setPickNote(true)]].map(([l, fn]) => (
+              <button key={l as string} onMouseDown={(ev) => ev.preventDefault()} onClick={fn as () => void} className={`h-7 rounded-md hover:bg-ink/10 ${l === '≡ Note' ? 'ml-auto px-2 text-[11.5px] font-medium text-[#d6c6ff]' : 'w-7'} ${l === 'B' ? 'font-bold' : l === 'I' ? 'italic' : ''}`}>{l as string}</button>
             ))}
           </div>
           <textarea id={'md-' + e.id} className={`w-full resize-y bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none ${big ? 'min-h-[220px]' : 'min-h-[90px]'}`} value={text} onChange={(ev) => setText(ev.target.value)} onBlur={save} placeholder="Écris… (markdown : ## titre, **gras**, - [ ] case)" autoFocus={!e.description} />
@@ -274,6 +287,34 @@ function Description({ e, big }: { e: Entity; big: boolean }) {
         <button className="w-full rounded-xl border border-dashed border-line px-3 py-3 text-left text-sm text-mute hover:text-ink" onClick={() => setEdit(true)}>Ajouter du contenu…</button>
       )}
     </Field>
+    </>
+  )
+}
+
+function NotePicker({ onPick, onClose }: { onPick: (n: Entity) => void; onClose: () => void }) {
+  const ents = useData((s) => s.entities)
+  const [q, setQ] = useState('')
+  const notes = Object.values(ents)
+    .filter((n) => ['note', 'idea', 'text', 'checklist', 'document'].includes(n.type) && !n.archived)
+    .filter((n) => !q || n.title.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 40)
+  return (
+    <Modal open onClose={onClose} title="Insérer le lien d’une note">
+      <div className="px-4 pb-4">
+        <input autoFocus className="input mb-2" placeholder="Rechercher une note…" value={q} onChange={(ev) => setQ(ev.target.value)} />
+        {q.trim() && (
+          <button className="mb-1 flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm text-accent hover:bg-ink/5" onClick={() => onPick(useData.getState().create({ type: 'note', title: q.trim() }))}>＋ Créer la note « {q.trim()} »</button>
+        )}
+        {notes.map((n) => (
+          <button key={n.id} onClick={() => onPick(n)} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-ink/5">
+            <span style={{ color: TYPE_META[n.type].tint }}>{TYPE_META[n.type].glyph}</span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-sm">{n.title || 'Sans titre'}</span>{n.description && <span className="block truncate text-[11px] text-mute">{n.description.replace(/[#*\[\]]/g, '').slice(0, 80)}</span>}</span>
+          </button>
+        ))}
+        {!notes.length && !q && <div className="py-6 text-center text-sm text-mute">Aucune note pour l’instant.</div>}
+      </div>
+    </Modal>
   )
 }
 
