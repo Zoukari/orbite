@@ -108,7 +108,7 @@ export function SettingsView() {
 }
 
 function SkyCard() {
-  const { on, loc, sun } = useSkyState()
+  const { on, loc, sun, dayMode } = useSkyState()
   const set = useData.getState().setSettings
   const custom = useData((st) => !!st.settings.skyLoc)
   const [busy, setBusy] = useState(false)
@@ -126,6 +126,7 @@ function SkyCard() {
   return (
     <Card title="Ciel vivant" info="Le fond suit le vrai soleil de ta ville : lever doré, jour bleu profond, crépuscule rose, nuit étoilée avec la lune. Il change toutes les 30 minutes. Il reste sombre pour que le texte soit toujours lisible.">
       <Row label="Activer"><Toggle on={on} onChange={(v) => set({ sky: v })} /></Row>
+      <Row label="Jour en bleu ciel" hint="Quand le soleil est levé : fond bleu ciel, cases blanches et texte foncé. La nuit, tout repasse en sombre."><Toggle on={dayMode} onChange={(v) => set({ skyDay: v })} /></Row>
       <Row label="Lieu" hint={`${state} · soleil à ${Math.round(sun.alt)}° · lever ${hm(sun.rise)} · coucher ${hm(sun.set)}`}>
         <div className="flex items-center gap-2">
           <span className="text-xs text-mute">{loc.label}</span>

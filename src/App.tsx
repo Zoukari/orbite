@@ -225,16 +225,21 @@ function BottomNav({ onPlus }: { onPlus: () => void }) {
   ]
   const more = !['home', 'map', 'tasks', 'notes'].includes(view)
   return (
-    <nav className="glass fixed inset-x-0 bottom-0 z-30 border-t border-line/60 safe-b">
-      <div className="mx-auto flex max-w-md items-stretch justify-around px-2 pt-1.5">
-        {items.map((i) => (
-          <button key={i.id} onClick={() => useUI.getState().go(i.id)} className={`flex flex-1 flex-col items-center gap-0.5 py-1 text-[10.5px] ${view === i.id ? 'text-ink' : 'text-mute'}`}>
-            <Icon name={i.icon} className="h-[22px] w-[22px]" stroke={view === i.id ? 1.9 : 1.6} />{i.label}
-          </button>
-        ))}
-        <button onClick={onPlus} className="flex flex-1 flex-col items-center gap-0.5 py-1 text-[10.5px] text-mute">
-          <span className={`flex h-[26px] w-[26px] items-center justify-center rounded-full ${more ? 'bg-accent text-bg' : 'bg-ink text-bg'}`}><Icon name="plus" className="h-4 w-4" stroke={2.2} /></span>
-          Plus
+    <nav className="island fixed inset-x-3 z-30 mx-auto max-w-md" style={{ bottom: 'max(10px, calc(env(safe-area-inset-bottom) - 6px))' }}>
+      <div className="flex items-stretch justify-around px-1.5 py-1.5">
+        {items.map((i) => {
+          const on = view === i.id
+          return (
+            <button key={i.id} onClick={() => useUI.getState().go(i.id)} className={`relative flex flex-1 flex-col items-center justify-center gap-[3px] rounded-[18px] py-1.5 text-[10.5px] font-medium transition ${on ? 'text-ink' : 'text-mute'}`}>
+              {on && <span className="absolute inset-0 rounded-[18px] bg-ink/[0.08]" />}
+              <span className="relative flex h-6 items-center"><Icon name={i.icon} className="h-[22px] w-[22px]" stroke={on ? 2 : 1.6} /></span>
+              <span className="relative leading-none">{i.label}</span>
+            </button>
+          )
+        })}
+        <button onClick={onPlus} className="flex flex-1 flex-col items-center justify-center gap-[3px] py-1.5 text-[10.5px] font-medium text-mute">
+          <span className="flex h-6 items-center"><span className={`flex h-6 w-6 items-center justify-center rounded-full ${more ? 'bg-accent text-bg' : 'bg-ink text-bg'}`}><Icon name="plus" className="h-4 w-4" stroke={2.2} /></span></span>
+          <span className="leading-none">Plus</span>
         </button>
       </div>
     </nav>

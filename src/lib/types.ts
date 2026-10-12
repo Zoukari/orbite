@@ -149,6 +149,8 @@ export interface Settings {
   lastRolloverDate?: string
   userName?: string
   sky?: boolean
+  skyDay?: boolean
+  homeFocus?: { projects: string[]; milestones: string[] }
   skyLoc?: { lat: number; lng: number; label: string }
 }
 

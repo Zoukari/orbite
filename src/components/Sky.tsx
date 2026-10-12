@@ -15,13 +15,22 @@ const KEYS: { alt: number; top: RGB; mid: RGB; bottom: RGB; glow: RGB; ga: numbe
   { alt: 30, top: [14, 46, 92], mid: [20, 64, 118], bottom: [34, 86, 140], glow: [150, 210, 255], ga: 0.2 }, // jour
   { alt: 90, top: [12, 48, 98], mid: [18, 66, 124], bottom: [30, 90, 148], glow: [160, 220, 255], ga: 0.2 }
 ]
+// palette « jour bleu ciel » (quand le mode jour clair est actif)
+const DAY: typeof KEYS = [
+  { alt: 0, top: [70, 110, 190], mid: [150, 150, 200], bottom: [250, 186, 150], glow: [255, 170, 110], ga: 0.5 },
+  { alt: 8, top: [62, 130, 212], mid: [120, 170, 226], bottom: [230, 206, 190], glow: [255, 210, 150], ga: 0.4 },
+  { alt: 20, top: [52, 136, 222], mid: [104, 178, 238], bottom: [172, 216, 248], glow: [255, 255, 255], ga: 0.45 },
+  { alt: 90, top: [44, 132, 224], mid: [96, 176, 240], bottom: [168, 216, 250], glow: [255, 255, 255], ga: 0.45 }
+]
+export const DAY_ALT = 2 // au-dessus : thème clair bleu ciel
 const mix = (a: RGB, b: RGB, k: number): RGB => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * k)) as RGB
 const css = (c: RGB, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`
 
-export function skyAt(alt: number) {
+export function skyAt(alt: number, light = false) {
+  const K = light && alt > DAY_ALT ? DAY : KEYS
   let i = 0
-  while (i < KEYS.length - 2 && alt > KEYS[i + 1].alt) i++
-  const A = KEYS[i], B = KEYS[i + 1]
+  while (i < K.length - 2 && alt > K[i + 1].alt) i++
+  const A = K[i], B = K[i + 1]
   const k = Math.max(0, Math.min(1, (alt - A.alt) / (B.alt - A.alt)))
   return { top: mix(A.top, B.top, k), mid: mix(A.mid, B.mid, k), bottom: mix(A.bottom, B.bottom, k), glow: mix(A.glow, B.glow, k), ga: A.ga + (B.ga - A.ga) * k }
 }
@@ -29,6 +38,7 @@ export function skyAt(alt: number) {
 const STEP = 30 * 60000
 export function useSkyState() {
   const on = useData((s) => s.settings.sky !== false)
+  const dayMode = useData((s) => s.settings.skyDay !== false)
   const loc = useData((s) => s.settings.skyLoc) || defaultLocation()
   const [slot, setSlot] = useState(() => Math.floor(Date.now() / STEP))
   useEffect(() => {
@@ -41,19 +51,20 @@ export function useSkyState() {
     const date = new Date(slot * STEP + STEP / 2) // milieu du créneau de 30 min
     const sun = sunPosition(date, loc.lat, loc.lng)
     const phase = moonPhase(date)
-    return { on, loc, date, sun, phase }
-  }, [slot, loc.lat, loc.lng, on])
+    return { on, dayMode, light: on && dayMode && sun.alt > DAY_ALT, loc, date, sun, phase }
+  }, [slot, loc.lat, loc.lng, on, dayMode])
 }
 
 export function Sky() {
-  const { on, sun, phase } = useSkyState()
-  const sky = skyAt(sun.alt)
+  const { on, sun, phase, light } = useSkyState()
+  const sky = skyAt(sun.alt, light)
   const night = Math.max(0, Math.min(1, (-sun.alt - 2) / 12)) // 0 = jour, 1 = nuit noire
   useEffect(() => {
-    document.documentElement.style.setProperty('--night', on ? (0.25 + night * 0.75).toFixed(2) : '1')
+    document.documentElement.style.setProperty('--night', on ? (light ? '0' : (0.25 + night * 0.75).toFixed(2)) : '1')
+    document.documentElement.classList.toggle('day', light)
     const m = document.querySelector('meta[name="theme-color"]')
     if (m) m.setAttribute('content', on ? `rgb(${sky.top.join(',')})` : '#141831')
-  }, [on, night, sky.top])
+  }, [on, night, sky.top, light])
   if (!on) return null
 
   // position à l'écran : l'arc va de 8 % (lever) à 92 % (coucher), hauteur selon l'altitude
@@ -75,7 +86,8 @@ export function Sky() {
       <div className="sky-layer absolute inset-0" style={{ background: `linear-gradient(180deg, ${css(sky.top)} 0%, ${css(sky.mid)} 55%, ${css(sky.bottom)} 100%)` }} />
       {/* halo à l'horizon, côté soleil */}
       <div className="sky-layer absolute inset-0" style={{ background: `radial-gradient(ellipse 85% 55% at ${Math.max(5, Math.min(95, sx))}% 105%, ${css(sky.glow, sky.ga)}, transparent 70%)` }} />
-      <div className="sky-stars absolute inset-0" style={{ opacity: night * 0.9 }} />
+      {!light && night > 0 && <div className="sky-stars absolute inset-0" style={{ opacity: night * 0.9 }} />}
+      {light && <div className="sky-clouds absolute inset-0" />}
       {sunUp && (
         <div className="sky-body absolute" style={{ left: `${sx}%`, top: `${sy}%` }}>
           <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full" style={{ width: 340, height: 340, background: `radial-gradient(circle, ${css(sky.glow, 0.28)} 0%, ${css(sky.glow, 0.08)} 40%, transparent 70%)` }} />

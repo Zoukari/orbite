@@ -44,6 +44,7 @@ export function TopThree({ large }: { large?: boolean }) {
   return (
     <div className={`beam rounded-[22px] bg-surface/40 p-3 ${anim ? '' : 'no-anim'}`}>
       <span className="beam-bg" />
+      <span className="beam-ring"><i /></span>
       <div className="mb-2 flex items-center justify-between px-0.5">
         <div className="section-title">À terminer {items.length > 0 && <span className="ml-1 font-mono normal-case tracking-normal">{left}/{items.length}</span>}</div>
         <button className="text-[11px] font-medium text-accent" onClick={() => setPick(true)}>+ Ajouter</button>

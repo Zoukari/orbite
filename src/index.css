@@ -48,6 +48,44 @@
   color-scheme: dark;
 }
 
+/* ═════════ Mode jour (bleu ciel) : activé par le ciel vivant quand le soleil est levé ═════════ */
+.dark.day {
+  --bg: 128 190 238;
+  --surface: 255 255 255;
+  --raised: 236 244 252;
+  --line: 196 214 236;
+  --ink: 12 28 54;
+  --mute: 78 98 130;
+  --accent: 30 96 220;
+  --edge: rgba(20, 50, 100, 0.28);
+  --edge-strong: rgba(20, 50, 100, 0.5);
+  --node-bg: rgba(255, 255, 255, 0.88);
+  --node-border: rgba(20, 40, 90, 0.10);
+  --node-shadow: 0 1px 2px rgba(20, 40, 90, 0.08), 0 10px 28px -12px rgba(20, 40, 90, 0.35);
+  --glass: rgba(255, 255, 255, 0.78);
+  --star: transparent;
+  color-scheme: light;
+}
+.dark.day body { background: rgb(var(--bg)); }
+.dark.day .card { background: rgba(255, 255, 255, 0.86); border-color: rgba(255, 255, 255, 0.9); box-shadow: 0 8px 30px -14px rgba(20, 50, 100, 0.35); }
+.dark.day .beam-bg { border-color: rgba(255, 255, 255, 0.7); box-shadow: 0 0 24px -6px rgba(255, 255, 255, 0.6); }
+.dark.day .beam-ring > i { background: conic-gradient(transparent 0deg, transparent 250deg, rgba(30, 96, 220, 0.25) 300deg, rgba(30, 96, 220, 0.75) 340deg, #1e60dc 354deg, transparent 360deg); }
+.dark.day .text-\[\#6fe0b8\] { color: #0f9f74; }
+.dark.day .text-\[\#f2b45a\] { color: #c27a07; }
+.dark.day .text-\[\#d6c6ff\] { color: #6a3fd8; }
+.dark.day .text-\[\#7aa7ff\] { color: #1e60dc; }
+.dark.day .text-\[\#ff8a8a\] { color: #d93a3a; }
+.dark.day .border-\[\#f4d58d\] { border-color: #d49a1a; }
+.dark.day .bg-\[\#f4d58d\] { background-color: #e0a92a; }
+
+.island {
+  border-radius: 26px;
+  background: rgb(var(--surface) / 0.92);
+  border: 1px solid rgb(var(--line) / 0.7);
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.dark.day .island { background: rgba(255, 255, 255, 0.9); border-color: rgba(255, 255, 255, 0.95); box-shadow: 0 12px 36px -12px rgba(20, 50, 100, 0.45); }
 html, body, #root { height: 100%; }
 /* Fond « nébuleuse » : bleu nuit doux au lieu du noir pur */
 .dark body {
@@ -56,7 +94,6 @@ html, body, #root { height: 100%; }
     radial-gradient(ellipse 90% 55% at 15% -5%, rgba(120, 100, 255, 0.22), transparent 65%),
     radial-gradient(ellipse 80% 50% at 100% 105%, rgba(60, 170, 210, 0.16), transparent 65%),
     linear-gradient(180deg, #151933 0%, #10132a 55%, #0e1226 100%);
-  background-attachment: fixed;
 }
 /* iOS : les champs date débordent sans ça */
 input[type='date'], input[type='datetime-local'], input[type='time'] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; min-height: 38px; display: block; }
@@ -106,6 +143,16 @@ button { -webkit-user-select: none; user-select: none; }
 /* ═════════ Ciel vivant (soleil / lune) ═════════ */
 .sky-layer { transition: background 2s ease; }
 .sky-body { transition: left 2s ease, top 2s ease; }
+.sky-clouds {
+  background:
+    radial-gradient(ellipse 30% 7% at 18% 22%, rgba(255,255,255,.55), transparent 70%),
+    radial-gradient(ellipse 22% 5% at 26% 25%, rgba(255,255,255,.45), transparent 70%),
+    radial-gradient(ellipse 34% 8% at 78% 58%, rgba(255,255,255,.45), transparent 70%),
+    radial-gradient(ellipse 20% 5% at 70% 61%, rgba(255,255,255,.4), transparent 70%),
+    radial-gradient(ellipse 28% 6% at 40% 84%, rgba(255,255,255,.35), transparent 70%);
+  animation: clouds 120s linear infinite alternate; will-change: transform;
+}
+@keyframes clouds { from { transform: translateX(-4%); } to { transform: translateX(4%); } }
 .sky-stars {
   transition: opacity 2s ease;
   background-image:
@@ -172,21 +219,19 @@ button { -webkit-user-select: none; user-select: none; }
 .prio-5 { box-shadow: 0 0 0 1px rgba(255,107,107,.35), 0 0 18px -4px rgba(255,107,107,.45); }
 .prio-4 { box-shadow: 0 0 0 1px rgba(242,180,90,.30), 0 0 14px -5px rgba(242,180,90,.35); }
 
-/* ═════════ Faisceau lumineux qui tourne autour des bords ═════════ */
-@property --beam { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
-@keyframes beam-spin { to { --beam: 360deg; } }
+/* ═════════ Faisceau lumineux qui tourne autour des bords ═════════
+   Version légère : un disque conique qui tourne (transform = GPU), découpé en anneau par un masque fixe.
+   Pas de repeint du dégradé à chaque image, pas de flou animé. */
 .beam { position: relative; isolation: isolate; }
-.beam::before, .beam::after {
-  content: ''; position: absolute; inset: -1px; border-radius: inherit; padding: 2px; pointer-events: none;
-  background: conic-gradient(from var(--beam), transparent 0deg, transparent 230deg, rgba(150, 170, 255, 0.25) 290deg, rgba(220, 228, 255, 0.85) 335deg, #fff 352deg, transparent 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  animation: beam-spin 5s linear infinite;
-}
-.beam::after { inset: -3px; padding: 4px; filter: blur(7px); opacity: 0.85; }
-.beam-bg { position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgba(201, 211, 255, 0.10); pointer-events: none; }
-.no-anim .beam::before, .no-anim .beam::after { animation: none; }
-@media (prefers-reduced-motion: reduce) { .beam::before, .beam::after { animation: none; } }
+.beam-ring { position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none; overflow: hidden;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.beam-ring > i { position: absolute; left: 50%; top: 50%; width: 250vmax; height: 250vmax; margin: -125vmax 0 0 -125vmax;
+  background: conic-gradient(transparent 0deg, transparent 250deg, rgba(150, 170, 255, 0.3) 300deg, rgba(225, 232, 255, 0.9) 340deg, #fff 354deg, transparent 360deg);
+  animation: beam-rot 6s linear infinite; will-change: transform; }
+@keyframes beam-rot { to { transform: rotate(360deg); } }
+.beam-bg { position: absolute; inset: 0; border-radius: inherit; border: 1px solid rgba(201, 211, 255, 0.12); pointer-events: none; box-shadow: 0 0 24px -6px rgba(170, 185, 255, 0.25); }
+.no-anim .beam-ring > i { animation: none; }
+@media (prefers-reduced-motion: reduce) { .beam-ring > i { animation: none; } }
 
 /* cible de dépôt pendant le glisser d'une branche */
 .react-flow__node.drop-target .node-body { border-color: #6fe0b8 !important; box-shadow: 0 0 0 4px rgba(111, 224, 184, 0.25), 0 0 28px rgba(111, 224, 184, 0.45) !important; transform: scale(1.04); }
