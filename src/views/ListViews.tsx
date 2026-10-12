@@ -21,7 +21,7 @@ export function Page({ title, sub, actions, children }: { title: string; sub?: R
             <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
             {sub && <div className="mt-1 text-sm text-mute">{sub}</div>}
           </div>
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
+          {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
         </div>
         {children}
       </div>
@@ -36,10 +36,10 @@ export function TasksView() {
   const setM = (m: M) => { setMode(m); try { localStorage.setItem('orbite.tasksMode', m) } catch {} }
   const [doneToo, setDoneToo] = useState(false)
   const toggle = <Segmented value={mode} onChange={setM} options={[{ value: 'projects', label: 'Plan' }, { value: 'done', label: 'Terminés' }, { value: 'dates', label: 'Dates' }]} />
-  const reclass = <button className="btn-ghost text-xs" onClick={() => useUI.getState().set({ reclass: true })} title="Reclasser mes éléments">⇅ Reclasser</button>
+  const reclass = <button className="btn-ghost whitespace-nowrap text-xs" onClick={() => useUI.getState().set({ reclass: true })} title="Reclasser mes éléments">⇅<span className="max-md:hidden"> Reclasser</span></button>
   if (mode === 'projects')
     return (
-      <Page title="Projets" actions={<>{toggle}<button className={`btn-ghost text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? 'Masquer faites' : 'Voir faites'}</button>{reclass}</>}>
+      <Page title="Projets" actions={<>{toggle}<button className={`btn-ghost whitespace-nowrap text-xs ${doneToo ? 'text-accent' : ''}`} onClick={() => setDoneToo(!doneToo)}>{doneToo ? '− faites' : '+ faites'}</button>{reclass}</>}>
         <div className="mb-3 flex items-center gap-1.5 overflow-x-auto px-1 text-[11px] text-mute no-scrollbar">
           {['Projet', 'Sous-projet', 'Vision', 'Objectif', 'Jalon', 'Tâche'].map((l, i) => <span key={l} className="flex shrink-0 items-center gap-1.5">{i > 0 && <span className="opacity-50">→</span>}{l}</span>)}
         </div>

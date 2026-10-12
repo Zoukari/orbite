@@ -4,8 +4,8 @@
 //
 // Un seul script. Dans les réglages du widget (appui long
 // → Modifier le widget), champ « Parameter » :
-//   (vide)  → TOUT : priorités + inbox + notes   (par défaut)
-//   taches  → 3 priorités + tâches du jour
+//   (vide)  → TOUT : à terminer + inbox + notes   (par défaut)
+//   taches  → À terminer + tâches du jour
 //   notes   → dernières notes
 //   inbox   → Inbox + capture rapide (un tap = noter une idée)
 //
@@ -87,13 +87,16 @@ async function loadTasks() {
   const t = todayStr()
   const open = tasks.filter((x) => !x.done)
   const byId = Object.fromEntries(tasks.map((x) => [x.id, x]))
-  const top = ((settings.dailyTop && settings.dailyTop.ids) || []).map((id) => byId[id]).filter(Boolean)
+  const pinned = ((settings.dailyTop && settings.dailyTop.ids) || []).map((id) => byId[id]).filter(Boolean)
+  const top = pinned.filter((x) => !x.done) // « À terminer » : reste tant que non cochée
   const today = open.filter((x) => x.date && x.date <= t).sort((a, b) => (b.priority || 0) - (a.priority || 0))
   const overdue = open.filter((x) => (x.date && x.date < t) || (x.postponed || 0) > 0)
   const isToday = (iso) => { if (!iso) return false; const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === t }
   const doneToday = tasks.filter((x) => x.done && isToday(x.doneAt)).length
-  const total = today.length + doneToday
-  return { top, today, overdue, doneToday, total, progress: total ? doneToday / total : 0, prios: settings.priorities || [] }
+  const doneTop = pinned.length - top.length
+  const total = pinned.length || today.length + doneToday
+  const done = pinned.length ? doneTop : doneToday
+  return { top, today, overdue, doneToday: done, total, left: top.length, progress: total ? done / total : 0, prios: settings.priorities || [] }
 }
 async function loadNotes() {
   const rows = await get('lm_entities?select=doc&deleted=eq.false&type=in.(note,idea,text,checklist,document)&order=updated_at.desc&limit=20')
@@ -256,23 +259,25 @@ function errorWidget(w, e) {
 async function tasksWidget(w, family) {
   w.url = APP_URL + '/#taches'
   const d = await loadTasks()
-  header(w, 'MES 3 PRIORITÉS', d.overdue.length ? `${d.overdue.length} en retard` : '', C.warn)
-  const list = d.top.length ? d.top : d.today.slice(0, 3)
-  if (!list.length) txt(w, 'Rien de prévu. Choisis tes priorités.', { color: C.mute, font: Font.systemFont(12), lines: 2 })
-  list.slice(0, 3).forEach((t, i) => {
+  header(w, `À TERMINER · ${d.left}`, d.overdue.length ? `${d.overdue.length} en retard` : '', C.warn)
+  const list = d.top.length ? d.top : d.today
+  const maxT = family === 'small' ? 3 : family === 'medium' ? 4 : 10
+  if (!list.length) txt(w, 'Rien à terminer. Ajoute des tâches depuis l’accueil.', { color: C.mute, font: Font.systemFont(12), lines: 2 })
+  list.slice(0, maxT).forEach((t, i) => {
     const row = w.addStack()
     row.centerAlignContent()
     const p = d.prios.find((x) => x.level === t.priority)
-    txt(row, `0${i + 1}`, { font: Font.boldMonospacedSystemFont(family === 'small' ? 14 : 17), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
+    txt(row, String(i + 1).padStart(2, '0'), { font: Font.boldMonospacedSystemFont(family === 'small' ? 14 : 17), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
     row.addSpacer(8)
     txt(row, t.title, { font: Font.mediumSystemFont(family === 'small' ? 12 : 14), color: t.done ? C.mute : C.ink })
     w.addSpacer(family === 'small' ? 4 : 6)
   })
-  if (family === 'large') {
+  if (list.length > maxT) txt(w, `+ ${list.length - maxT} autre${list.length - maxT > 1 ? 's' : ''}`, { font: Font.mediumSystemFont(11), color: C.mute })
+  if (family === 'large' && list.length < 7) {
     w.addSpacer(8)
     txt(w, `AUJOURD’HUI · ${d.today.length}`, { font: Font.semiboldSystemFont(10), color: C.mute })
     w.addSpacer(4)
-    d.today.filter((t) => !list.includes(t)).slice(0, 7).forEach((t) => { txt(w, `○  ${t.title}`); w.addSpacer(3) })
+    d.today.filter((t) => !list.includes(t)).slice(0, 9 - list.length).forEach((t) => { txt(w, `○  ${t.title}`); w.addSpacer(3) })
   } else if (family === 'medium') {
     w.addSpacer()
     txt(w, `${d.today.length} tâche${d.today.length > 1 ? 's' : ''} aujourd’hui`, { font: Font.systemFont(11), color: C.mute })
@@ -326,22 +331,24 @@ async function inboxWidget(w, family) {
 async function allWidget(w, family) {
   w.url = APP_URL
   const [d, notes, inbox] = await Promise.all([loadTasks(), loadNotes(), loadInbox()])
-  const list = d.top.length ? d.top : d.today.slice(0, 3)
+  const list = d.top.length ? d.top : d.today
+  const more = (stack, shown) => { if (list.length > shown) txt(stack, `+ ${list.length - shown} autre${list.length - shown > 1 ? 's' : ''}`, { font: Font.mediumSystemFont(10), color: C.mute }) }
   const prioRow = (stack, t, i, size) => {
     const row = stack.addStack()
     row.centerAlignContent()
     const p = d.prios.find((x) => x.level === t.priority)
-    txt(row, `0${i + 1}`, { font: Font.boldMonospacedSystemFont(size + 2), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
+    txt(row, String(i + 1).padStart(2, '0'), { font: Font.boldMonospacedSystemFont(size + 2), color: t.done ? C.done : p ? new Color(p.color) : C.accent })
     row.addSpacer(6)
     txt(row, t.title, { font: Font.mediumSystemFont(size), color: t.done ? C.mute : C.ink })
     stack.addSpacer(4)
   }
   if (family === 'small') {
     const h = w.addStack(); h.centerAlignContent()
-    txt(h, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute }); h.addSpacer()
+    txt(h, `À TERMINER · ${d.left}`, { font: Font.semiboldSystemFont(10), color: C.mute }); h.addSpacer()
     const im = h.addImage(ringImage(d.progress, `${d.doneToday}/${d.total}`, 34, d.overdue.length > 0)); im.imageSize = new Size(34, 34)
     w.addSpacer(6)
     list.slice(0, 3).forEach((t, i) => prioRow(w, t, i, 12))
+    more(w, 3)
     if (!list.length) txt(w, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
     return
   }
@@ -349,9 +356,10 @@ async function allWidget(w, family) {
     // haut : priorités sur toute la largeur — bas : 2 cartes Inbox | Note
     const head = w.addStack(); head.centerAlignContent()
     const top = head.addStack(); top.layoutVertically()
-    txt(top, 'PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute })
+    txt(top, `À TERMINER · ${d.left}`, { font: Font.semiboldSystemFont(10), color: C.mute })
     top.addSpacer(4)
     list.slice(0, 2).forEach((t, i) => prioRow(top, t, i, 14))
+    more(top, 2)
     if (!list.length) txt(top, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(13) })
     head.addSpacer()
     const ringBox = head.addStack(); ringBox.layoutVertically(); ringBox.centerAlignContent()
@@ -380,12 +388,13 @@ async function allWidget(w, family) {
   // large : 3 sections
   const lh = w.addStack(); lh.centerAlignContent()
   const lt = lh.addStack(); lt.layoutVertically()
-  txt(lt, 'MES 3 PRIORITÉS', { font: Font.semiboldSystemFont(10), color: C.mute })
+  txt(lt, `À TERMINER · ${d.left}`, { font: Font.semiboldSystemFont(10), color: C.mute })
   txt(lt, d.overdue.length ? `${d.overdue.length} en retard` : `${d.today.length} restante${d.today.length > 1 ? 's' : ''} aujourd’hui`, { font: Font.mediumSystemFont(11), color: d.overdue.length ? C.warn : C.mute })
   lh.addSpacer()
   const li = lh.addImage(ringImage(d.progress, `${d.doneToday}/${d.total}`, 50, d.overdue.length > 0)); li.imageSize = new Size(50, 50)
   w.addSpacer(6)
-  list.slice(0, 3).forEach((t, i) => prioRow(w, t, i, 14))
+  list.slice(0, 5).forEach((t, i) => prioRow(w, t, i, 14))
+  more(w, 5)
   if (!list.length) txt(w, 'Rien de prévu.', { color: C.mute, font: Font.systemFont(12) })
   w.addSpacer(8)
   const ih = w.addStack(); ih.centerAlignContent(); ih.url = `scriptable:///run/${encodeURIComponent(SCRIPT_NAME)}?mode=capture`
@@ -462,12 +471,12 @@ if (mode === 'capture') {
       const first = (d.top.find((t) => !t.done) || d.today[0])
       if (fam === 'accessoryCircular') {
         w.addAccessoryWidgetBackground = true
-        const im = w.addImage(ringImage(d.progress, `${d.today.length}`, 64, false, true)); im.imageSize = new Size(64, 64); im.centerAlignImage()
+        const im = w.addImage(ringImage(d.progress, `${d.top.length ? d.left : d.today.length}`, 64, false, true)); im.imageSize = new Size(64, 64); im.centerAlignImage()
       } else if (fam === 'accessoryRectangular') {
         const h = w.addStack(); h.centerAlignContent()
         const im = h.addImage(ringImage(d.progress, '', 18, false, true)); im.imageSize = new Size(18, 18)
         h.addSpacer(4)
-        const t = h.addText(`${d.doneToday}/${d.total} aujourd’hui${d.overdue.length ? ` · ${d.overdue.length}⚠︎` : ''}`); t.font = Font.semiboldSystemFont(12)
+        const t = h.addText(`${d.top.length ? `${d.left} à terminer` : `${d.doneToday}/${d.total} aujourd’hui`}${d.overdue.length ? ` · ${d.overdue.length}⚠︎` : ''}`); t.font = Font.semiboldSystemFont(12)
         w.addSpacer(2)
         const a = w.addText(first ? `01 ${first.title}` : 'Rien de prévu'); a.font = Font.boldSystemFont(14); a.lineLimit = 1
         const second = (d.top.length ? d.top : d.today).filter((x) => x !== first && !x.done)[0]

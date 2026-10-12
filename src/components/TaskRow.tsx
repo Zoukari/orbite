@@ -16,8 +16,7 @@ function TaskRowImpl({ t, compact, showTop = true, hideProject }: { t: Entity; c
     const s = useData.getState()
     const top = s.settings.dailyTop
     if (inTop) s.setSettings({ dailyTop: { ...top, ids: top.ids.filter((x) => x !== t.id) } })
-    else if (top.ids.length >= 3) useUI.getState().notify('3 priorités maximum — retire-en une d’abord')
-    else s.setSettings({ dailyTop: { date: today(), ids: [...top.ids, t.id] } })
+    else { s.setSettings({ dailyTop: { date: today(), ids: [...top.ids, t.id] } }); useUI.getState().notify('Ajoutée à « À terminer »') }
   }
   return (
     <div
@@ -48,7 +47,7 @@ function TaskRowImpl({ t, compact, showTop = true, hideProject }: { t: Entity; c
         )}
       </button>
       {showTop && !t.done && (
-        <button onClick={toggleTop} title={inTop ? 'Retirer des 3 priorités' : 'Ajouter aux 3 priorités du jour'} className={`mt-0.5 text-sm transition ${inTop ? 'text-[#f2b45a]' : 'text-mute/40 opacity-0 hover:text-[#f2b45a] group-hover:opacity-100 max-md:opacity-100'}`}>
+        <button onClick={toggleTop} title={inTop ? 'Retirer de « À terminer »' : 'Ajouter à « À terminer » (accueil)'} className={`mt-0.5 text-sm transition ${inTop ? 'text-[#f2b45a]' : 'text-mute/40 opacity-0 hover:text-[#f2b45a] group-hover:opacity-100 max-md:opacity-100'}`}>
           {inTop ? '★' : '☆'}
         </button>
       )}

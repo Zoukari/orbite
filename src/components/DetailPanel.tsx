@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useData, useUI, resolve, ancestors, displayTitle, progressOf, relationCounts, relatedEntities, relatedTasks, uid, descendants } from '../lib/store'
 import { TYPE_META } from '../lib/meta'
 import { LookPicker } from './LookPicker'
@@ -23,20 +23,65 @@ export function DetailPanel() {
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [])
+  const sheetRef = useRef<HTMLElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const backRef = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ y0: number; y: number; t: number; on: boolean; fromBody: boolean } | null>(null)
   if (!id || !raw) return null
   const e = resolve(ents, raw)
   const close = () => useUI.getState().set({ detailId: null })
 
+  // Glisser vers le bas pour fermer (poignée, en-tête, ou contenu quand il est tout en haut)
+  const setY = (y: number, anim = false) => {
+    const el = sheetRef.current
+    if (!el) return
+    el.style.transition = anim ? 'transform .26s cubic-bezier(.2,.8,.2,1)' : 'none'
+    el.style.transform = y ? `translateY(${y}px)` : ''
+    if (backRef.current) { backRef.current.style.transition = el.style.transition.replace('transform', 'opacity'); backRef.current.style.opacity = String(Math.max(0, 1 - y / 500)) }
+  }
+  const onStart = (ev: React.TouchEvent, fromBody: boolean) => {
+    if (fromBody && (scrollRef.current?.scrollTop || 0) > 0) return
+    const tag = (ev.target as HTMLElement).tagName
+    if (!fromBody && (tag === 'TEXTAREA' || tag === 'INPUT')) return
+    drag.current = { y0: ev.touches[0].clientY, y: 0, t: Date.now(), on: false, fromBody }
+  }
+  const onMove = (ev: React.TouchEvent) => {
+    const d = drag.current
+    if (!d) return
+    const dy = ev.touches[0].clientY - d.y0
+    if (!d.on) {
+      if (dy < -4 || (d.fromBody && (scrollRef.current?.scrollTop || 0) > 0)) { drag.current = null; return }
+      if (dy > 8) d.on = true
+      else return
+    }
+    d.y = Math.max(0, dy - 8)
+    setY(d.y)
+  }
+  const onEnd = () => {
+    const d = drag.current
+    drag.current = null
+    if (!d || !d.on) return
+    const v = d.y / Math.max(1, Date.now() - d.t)
+    if (d.y > 130 || v > 0.6) {
+      setY(window.innerHeight, true)
+      setTimeout(close, 220)
+    } else setY(0, true)
+  }
+  const touch = (fromBody: boolean) => (mobile ? { onTouchStart: (ev: React.TouchEvent) => onStart(ev, fromBody), onTouchMove: onMove, onTouchEnd: onEnd, onTouchCancel: onEnd } : {})
+
   return (
     <>
-      {mobile && <div className="fade fixed inset-0 z-40 bg-black/40" onClick={close} />}
+      {mobile && <div ref={backRef} className="fade fixed inset-0 z-40 bg-[#0a0d1c]/55 backdrop-blur-[2px]" onClick={close} />}
       <aside
-        className={`fixed z-50 flex flex-col border-line/70 bg-surface shadow-2xl ${mobile ? 'sheet inset-x-0 bottom-0 top-[6vh] rounded-t-3xl border-t' : 'slidein bottom-3 right-3 top-3 w-[420px] rounded-3xl border'}`}
+        ref={sheetRef}
+        className={`fixed z-50 flex flex-col border-line/70 bg-surface shadow-2xl ${mobile ? 'sheet inset-x-0 bottom-0 top-[6vh] rounded-t-[28px] border-t' : 'slidein bottom-3 right-3 top-3 w-[420px] rounded-3xl border'}`}
         key={e.id}
       >
-        {mobile && <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-line" />}
-        <Header e={e} raw={raw} onClose={close} />
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-10 safe-b">
+        <div {...touch(false)} className="shrink-0 touch-none">
+          {mobile && <div className="flex justify-center pb-1 pt-2.5"><div className="h-1.5 w-11 rounded-full bg-ink/25" /></div>}
+          <Header e={e} raw={raw} onClose={close} />
+        </div>
+        <div ref={scrollRef} {...touch(true)} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-10 safe-b">
           <Body e={e} raw={raw} />
         </div>
       </aside>
@@ -55,12 +100,14 @@ function Header({ e, raw, onClose }: { e: Entity; raw: Entity; onClose: () => vo
   return (
     <div className="shrink-0 px-5 pb-3 pt-4">
       <div className="mb-2 flex items-center gap-1 text-[11px] text-mute">
-        {map && <button className="hover:text-ink" onClick={() => { useData.getState().setSettings({ activeMapId: map.id }); ui.go('map') }}>{map.title}</button>}
-        {path.map((p) => (
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden whitespace-nowrap">
+        {map && <button className="shrink-0 hover:text-ink" onClick={() => { useData.getState().setSettings({ activeMapId: map.id }); ui.go('map') }}>{map.title}</button>}
+        {path.length > 1 && <span className="flex shrink-0 items-center gap-1"><span>›</span><button className="hover:text-ink" title={path.slice(0, -1).map((p) => displayTitle(ents, p)).join(' › ')} onClick={() => ui.open(path[path.length - 2].id)}>…</button></span>}
+        {path.slice(-1).map((p) => (
           <span key={p.id} className="flex min-w-0 items-center gap-1"><span>›</span><button className="truncate hover:text-ink" onClick={() => ui.open(p.id)}>{displayTitle(ents, p)}</button></span>
         ))}
         {!map && !path.length && <span>{TYPE_META[e.type].label}{e.inbox ? ' · Inbox' : ''}</span>}
-        <div className="flex-1" />
+        </div>
         <button className="icon-btn !h-8 !w-8" title="Favori" onClick={() => useData.getState().update(e.id, { favorite: !e.favorite })}>
           <span className={e.favorite ? 'text-[#f2b45a]' : ''}>{e.favorite ? '★' : '☆'}</span>
         </button>
@@ -227,7 +274,7 @@ function Body({ e, raw }: { e: Entity; raw: Entity }) {
 
 function Field({ label, children, right }: { label: string; children: ReactNode; right?: ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-1.5 flex items-center justify-between"><span className="label !mb-0">{label}</span>{right}</div>
       {children}
     </div>
