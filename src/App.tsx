@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { Sky } from './components/Sky'
 import { useData, useUI, onMilestoneReached } from './lib/store'
 import { initSync, useSync } from './lib/sync'
 import { PinLogin } from './components/PinLogin'
@@ -110,6 +111,7 @@ function Shell() {
 
   return (
     <div className="flex h-full overflow-hidden">
+      <Sky />
       {!mobile && <Sidebar onCreate={() => setCreate(true)} />}
       <main className="relative min-w-0 flex-1">
         <Suspense fallback={<div className="h-full" />}>

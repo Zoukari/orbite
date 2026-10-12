@@ -102,7 +102,21 @@ button { -webkit-user-select: none; user-select: none; }
   animation: drift 90s ease-in-out infinite alternate;
 }
 .space.calm::before { opacity: 0.35; }
-.stars { position: absolute; inset: 0; opacity: 1; transition: opacity 1.2s; }
+.stars { position: absolute; inset: 0; opacity: var(--night, 1); transition: opacity 1.2s; }
+/* ═════════ Ciel vivant (soleil / lune) ═════════ */
+.sky-layer { transition: background 2s ease; }
+.sky-body { transition: left 2s ease, top 2s ease; }
+.sky-stars {
+  transition: opacity 2s ease;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 28% 42%, #dfe5ff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 44% 12%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 63% 33%, #dfe5ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 78% 8%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 88% 46%, #cdd6ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 64%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 36% 78%, #dfe5ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 55% 60%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 71% 72%, #dfe5ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 92% 86%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 20% 92%, #cdd6ff 50%, transparent 51%);
+  background-size: 420px 420px;
+}
 :root:not(.dark) .space::before {
   content: ''; position: absolute; inset: -20%;
   background:
@@ -110,7 +124,7 @@ button { -webkit-user-select: none; user-select: none; }
     radial-gradient(ellipse 60% 40% at 75% 85%, rgba(160, 168, 188, 0.16), transparent 70%);
   animation: drift 90s ease-in-out infinite alternate;
 }
-.space.calm .stars { opacity: 0.4; }
+.space.calm .stars { opacity: calc(var(--night, 1) * 0.4); }
 @keyframes drift { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 1.5%, 0) scale(1.05); } }
 @keyframes twinkle { 0%, 100% { opacity: .25 } 50% { opacity: .8 } }
 

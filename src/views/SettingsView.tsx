@@ -8,6 +8,7 @@ import { supabase, useSync, signOut, syncNow, setPin, signInPin, pinPassword } f
 import { PinLogin, PinInput } from '../components/PinLogin'
 import { Page } from './ListViews'
 import { Segmented, Toggle, Icon, Info } from '../components/ui'
+import { useSkyState } from '../components/Sky'
 
 export function SettingsView() {
   const s = useData((st) => st.settings)
@@ -24,6 +25,8 @@ export function SettingsView() {
           <Row label="Ton prénom"><input className="input !w-44" placeholder="Zoukari" value={s.userName || ''} onChange={(e) => set({ userName: e.target.value })} /></Row>
           <Row label="Reclasser mes éléments" hint="Projet → Sous-projet → Vision → Objectif → Jalon → Tâche. L’assistant te pose une question par élément."><button className="btn-soft text-xs" onClick={() => useUI.getState().set({ reclass: true })}>Lancer</button></Row>
         </Card>
+
+        <SkyCard />
 
         <Card title="Sauvegarde" sub={<>Dernière sauvegarde : <b className={!s.lastBackupAt ? 'text-[#f2b45a]' : 'text-ink'}>{fmtRelative(s.lastBackupAt)}</b></>}>
           <div className="flex flex-wrap gap-2">
@@ -101,6 +104,35 @@ export function SettingsView() {
         </Card>
       </div>
     </Page>
+  )
+}
+
+function SkyCard() {
+  const { on, loc, sun } = useSkyState()
+  const set = useData.getState().setSettings
+  const custom = useData((st) => !!st.settings.skyLoc)
+  const [busy, setBusy] = useState(false)
+  const hm = (d: Date) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  const state = sun.alt > 12 ? 'Jour' : sun.alt > 0 ? 'Soleil bas (heure dorée)' : sun.alt > -6 ? 'Crépuscule' : sun.alt > -12 ? 'Heure bleue' : 'Nuit'
+  const locate = () => {
+    if (!navigator.geolocation) return alert('Localisation indisponible sur cet appareil.')
+    setBusy(true)
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setBusy(false); set({ skyLoc: { lat: +p.coords.latitude.toFixed(2), lng: +p.coords.longitude.toFixed(2), label: 'Ma position' } }); useUI.getState().notify('Ciel calé sur ta position') },
+      () => { setBusy(false); alert('Position refusée. Le ciel suit ton fuseau horaire.') },
+      { timeout: 10000, maximumAge: 86400000 }
+    )
+  }
+  return (
+    <Card title="Ciel vivant" info="Le fond suit le vrai soleil de ta ville : lever doré, jour bleu profond, crépuscule rose, nuit étoilée avec la lune. Il change toutes les 30 minutes. Il reste sombre pour que le texte soit toujours lisible.">
+      <Row label="Activer"><Toggle on={on} onChange={(v) => set({ sky: v })} /></Row>
+      <Row label="Lieu" hint={`${state} · soleil à ${Math.round(sun.alt)}° · lever ${hm(sun.rise)} · coucher ${hm(sun.set)}`}>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-mute">{loc.label}</span>
+          {custom ? <button className="btn-ghost text-xs" onClick={() => set({ skyLoc: undefined })}>Auto</button> : <button className="btn-soft text-xs" disabled={busy} onClick={locate}>{busy ? '…' : 'Ma position'}</button>}
+        </div>
+      </Row>
+    </Card>
   )
 }
 

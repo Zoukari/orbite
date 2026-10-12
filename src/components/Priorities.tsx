@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useData, useUI } from '../lib/store'
 import { planParent } from './ProjectTree'
 import type { Entity } from '../lib/types'
@@ -17,6 +17,29 @@ export function TopThree({ large }: { large?: boolean }) {
   const left = items.filter((t) => !t.done).length
   const remove = (id: string) => { const s = useData.getState(); s.setSettings({ dailyTop: { date: today(), ids: s.settings.dailyTop.ids.filter((x) => x !== id) } }) }
   const anim = useData((s) => s.settings.animations)
+  // réordonner : maintenir la poignée ⠿ et glisser
+  const listRef = useRef<HTMLDivElement>(null)
+  const [drag, setDrag] = useState<{ id: string; dy: number; y0: number } | null>(null)
+  const setOrder = (order: string[]) => { const s = useData.getState(); s.setSettings({ dailyTop: { date: s.settings.dailyTop.date || today(), ids: order } }) }
+  const onGrip = (ev: React.PointerEvent, id: string) => {
+    ev.preventDefault(); (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    setDrag({ id, dy: 0, y0: ev.clientY }); navigator.vibrate?.(8)
+  }
+  const onGripMove = (ev: React.PointerEvent) => {
+    if (!drag || !listRef.current) return
+    const rows = [...listRef.current.querySelectorAll<HTMLElement>('[data-row]')]
+    const order = rows.map((r) => r.dataset.row!)
+    const from = order.indexOf(drag.id)
+    const me = rows[from]
+    const h = me.offsetHeight + 6
+    let dy = ev.clientY - drag.y0
+    // franchir la moitié d'une ligne → échange
+    if (dy > h / 2 && from < order.length - 1) { const o = [...order]; o.splice(from + 1, 0, o.splice(from, 1)[0]); setOrder(merge(o)); setDrag({ ...drag, y0: drag.y0 + h, dy: dy - h }); return }
+    if (dy < -h / 2 && from > 0) { const o = [...order]; o.splice(from - 1, 0, o.splice(from, 1)[0]); setOrder(merge(o)); setDrag({ ...drag, y0: drag.y0 - h, dy: dy + h }); return }
+    setDrag({ ...drag, dy })
+  }
+  // garde les ids masqués (archivés) à la fin
+  const merge = (o: string[]) => [...o, ...ids.filter((x) => !o.includes(x))]
   const pathOf = (t: Entity) => { const out: string[] = []; let p = planParent(ents, t); const seen = new Set<string>(); while (p && !seen.has(p.id) && out.length < 2) { seen.add(p.id); if (['project', 'subproject', 'category'].includes(p.type)) out.unshift(p.title); p = planParent(ents, p) } return out.join(' › ') }
   return (
     <div className={`beam rounded-[22px] bg-surface/40 p-3 ${anim ? '' : 'no-anim'}`}>
@@ -25,16 +48,20 @@ export function TopThree({ large }: { large?: boolean }) {
         <div className="section-title">À terminer {items.length > 0 && <span className="ml-1 font-mono normal-case tracking-normal">{left}/{items.length}</span>}</div>
         <button className="text-[11px] font-medium text-accent" onClick={() => setPick(true)}>+ Ajouter</button>
       </div>
-      <div className="relative space-y-1.5">
+      <div ref={listRef} className="relative space-y-1.5">
         {items.map((t, i) => {
+          const dragging = drag?.id === t.id
           const p = prios.find((x) => x.level === t.priority)
           const path = pathOf(t)
           return (
-            <div key={t.id} className={`group relative flex items-center gap-3 overflow-hidden rounded-2xl border px-3 transition ${large ? 'py-3' : 'py-2'} ${t.done ? 'border-[#6fe0b8]/30 bg-[#6fe0b8]/[0.06]' : 'border-line/70 bg-raised/50'}`}>
+            <div key={t.id} data-row={t.id} style={dragging ? { transform: `translateY(${drag!.dy}px) scale(1.02)`, zIndex: 10, transition: 'none' } : undefined} className={`group relative flex min-w-0 items-center gap-2.5 overflow-hidden rounded-2xl border pl-1 pr-3 transition ${dragging ? 'shadow-2xl ring-1 ring-accent/50' : ''} ${large ? 'py-3' : 'py-2'} ${t.done ? 'border-[#6fe0b8]/30 bg-[#6fe0b8]/[0.06]' : 'border-line/70 bg-raised/50'}`}>
               <div className="absolute inset-y-0 left-0 w-[3px]" style={{ background: t.done ? '#6fe0b8' : p?.color || 'rgb(var(--accent))' }} />
-              <span className={`w-8 font-display font-semibold tabular-nums ${large ? 'text-2xl' : 'text-lg'} ${t.done ? 'text-[#6fe0b8]' : ''}`} style={{ color: t.done ? undefined : p?.color }}>{String(i + 1).padStart(2, '0')}</span>
+              <span onPointerDown={(ev) => onGrip(ev, t.id)} onPointerMove={onGripMove} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)} className="flex h-9 w-6 shrink-0 cursor-grab touch-none select-none items-center justify-center text-mute/60 active:cursor-grabbing" title="Glisser pour réordonner">
+                <svg viewBox="0 0 10 16" className="h-4 w-2.5" fill="currentColor"><circle cx="2.5" cy="3" r="1.3" /><circle cx="7.5" cy="3" r="1.3" /><circle cx="2.5" cy="8" r="1.3" /><circle cx="7.5" cy="8" r="1.3" /><circle cx="2.5" cy="13" r="1.3" /><circle cx="7.5" cy="13" r="1.3" /></svg>
+              </span>
+              <span className={`w-8 shrink-0 font-display font-semibold tabular-nums ${large ? 'text-2xl' : 'text-lg'} ${t.done ? 'text-[#6fe0b8]' : ''}`} style={{ color: t.done ? undefined : p?.color }}>{String(i + 1).padStart(2, '0')}</span>
               <button className="min-w-0 flex-1 text-left" onClick={() => useUI.getState().open(t.id)}>
-                <div className={`truncate font-medium ${large ? 'text-[15px]' : 'text-[13.5px]'} ${t.done ? 'text-mute line-through' : ''}`}>{t.title}</div>
+                <div className={`line-clamp-2 break-words font-medium leading-snug ${large ? 'text-[15px]' : 'text-[13.5px]'} ${t.done ? 'text-mute line-through' : ''}`}>{t.title}</div>
                 {path && <div className="truncate text-[11px] text-mute">{path}</div>}
               </button>
               <button onClick={() => useData.getState().toggleDone(t.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-[1.5px]" style={{ borderColor: t.done ? '#6fe0b8' : 'rgb(var(--line))', background: t.done ? '#6fe0b8' : '' }} title="Terminé">

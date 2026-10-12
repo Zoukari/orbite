@@ -148,6 +148,8 @@ export interface Settings {
   rightPanel: boolean
   lastRolloverDate?: string
   userName?: string
+  sky?: boolean
+  skyLoc?: { lat: number; lng: number; label: string }
 }
 
 export type ViewId =
